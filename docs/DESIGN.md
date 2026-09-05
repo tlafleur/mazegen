@@ -1,10 +1,10 @@
 # mazegen — technical plan
 
-Printable black-and-white mazes, 8.5×11", generated on an iPad.
+Printable black-and-white mazes on US Letter and A4, generated on an iPad.
 
 ## 1. What the app has to do
 
-- Produce a maze that prints correctly on US Letter, in black and white, at real vector quality.
+- Produce a maze that prints correctly on US Letter or A4, in black and white, at real vector quality.
 - Let a user vary difficulty, cell size, outline shape, grid type, and line style.
 - Be operable by a child: no blank states, no small targets, no way to lose work, no dead-end frustration.
 - Run on an iPad, primarily in landscape and portrait, offline.
@@ -74,7 +74,7 @@ Every maze is a pure function of `(settings, seed)`. This is required, not optio
 - "Print that one again" works.
 - Settings plus seed encode to a short string in the URL hash, so a maze is shareable and bookmarkable.
 - Golden-file regression tests become possible.
-- The undo history in §6 is a list of seeds, not a list of bitmaps.
+- The history filmstrip in §8 is a list of seeds, not a list of bitmaps.
 
 ## 4. Difficulty and density are two different things
 
