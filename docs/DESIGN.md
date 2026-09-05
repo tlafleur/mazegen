@@ -111,46 +111,94 @@ Labelling these by drawing tool rather than by a number is more useful to a pare
 
 ### Difficulty, measured rather than assumed
 
-Most generators change the grid size and call that difficulty. Better: define difficulty from properties of the generated maze, then verify it.
+Most generators change the grid size and call that difficulty. Better: define difficulty from
+properties of the generated maze, then verify it. Everything below was measured during phase 1
+and corrects the sketch this section originally carried.
 
 Given the solution path `P` from start to end:
 
 - `L` — cells on the solution path
-- `J` — cells on `P` with degree ≥ 3, i.e. points where a wrong turn is available
-- `d_i` — depth of each wrong branch hanging off `P`, until it dead-ends or rejoins
-- `D̄`, `Dmax` — mean and maximum wrong-branch depth
-- `T = L / (rows + cols)` — tortuosity
+- `J` — cells on `P` where at least one opening *leaves* `P`. Stricter than "degree ≥ 3": a
+  third opening that rejoins the route is a shortcut, not a chance to go wrong.
+- `D̄` — mean depth of the off-route regions hanging off `P`, measured per connected region
+- `maxDeadEndRun` — longest corridor from a dead end back to the first junction
 
-A maze with 30 decision points whose wrong branches die after two cells is easy. A maze with 12 decision points whose wrong branches run 20 cells deep is hard. So the primary term is roughly:
+**The score is expected work, normalized by size:**
 
 ```
-score = J · log(1 + D̄)      (plus a size term)
+score = (L + J · D̄) / cells
 ```
 
-The weights need calibration, not guessing. Generate ~10k mazes across the parameter space offline, compute scores, take quintile boundaries, and store those as the level 1–5 thresholds.
+The original sketch, `J · log(1 + D̄)`, ranks the carvers backwards. Measured over 20 mazes on a
+21×28 grid, the recursive backtracker gives a long route with few branches (L 210, J 17) and
+Kruskal a short route with many (L 77, J 39). `J` swings 2.3× while `log(1 + D̄)` swings 1.6×, so
+decision count dominates and the formula calls the bushy maze the hard one. It also discards
+route length, which for a child with a crayon is the most concrete work on the page. With the
+corrected formula: backtracker 0.755, Kruskal 0.464, Wilson's 0.455, sidewinder 0.410.
 
-Generation then becomes: sample parameters for the requested level, generate, score, accept if inside the band, otherwise retry. Cap at ~20 attempts and take the closest. Generation costs microseconds, so this is affordable, and it makes "difficulty 2" mean the same thing across every shape, grid, and cell size.
+**Two different depth measures, and the difference matters.** *Branch depth* is how far off the
+route a solver can wander. *Dead-end run* is how far they must retrace once they discover they
+are wrong. The second is what frustrates a child, so it is the one that gets capped.
 
 ### Algorithm choice is a difficulty input
 
-Carving algorithms have distinct characters, and this is the main non-size difficulty control:
-
 | Algorithm | Character | Use |
 |---|---|---|
-| Sidewinder | Strong upward bias, obvious strategy | Easiest levels |
-| Kruskal / Prim | Bushy, short dead ends everywhere | Easy–medium, busy texture |
-| Wilson's | Uniform spanning tree, no bias or texture | Medium |
-| Recursive backtracker | Long winding corridors, deep dead ends | Hard, and the most satisfying to draw |
-| Eller's | Row-by-row, distinct horizontal texture | Variety |
+| Sidewinder | Unbroken top row, so an obvious strategy | Level 1 |
+| Kruskal | Bushy, short dead ends everywhere | Level 2 |
+| Wilson's | Uniform spanning tree, no bias or texture | Held back as a user choice |
+| Recursive backtracker | Long winding corridors, deep dead ends | Levels 3–5, by braid amount |
+
+Sidewinder, Kruskal and Wilson's score within a few percent of one another, so they cannot supply
+five separated levels between them. The usable range comes from the backtracker braided by
+varying amounts, which spans 0.35 to 0.64 at fine-pen size on its own.
+
+Sidewinder's real easiness is invisible to any structural measure — its top corridor hands the
+solver a plan — so it is pinned to level 1 by name rather than chosen by score.
+
+### The levels
+
+| Level | Carver | Braid | Dead-end cap |
+|---|---|---|---|
+| 1 Gentle | Sidewinder | 0.3 | 3 |
+| 2 Easy | Kruskal | 0 | 4 |
+| 3 Medium | Backtracker | 0.3 | — |
+| 4 Hard | Backtracker | 0.1 | — |
+| 5 Fiendish | Backtracker | 0 | — |
 
 ### "Hard to get stuck", concretely
 
-Two post-processing steps, both operating on the graph:
+1. **Braiding.** Open a fraction of dead ends so there is a way onward.
+2. **Dead-end depth capping.** Open a wall at the tip of any corridor longer than `k`, so there
+   is never much to retrace. Level 1 caps at three cells.
 
-1. **Braiding.** Remove a fraction of dead ends by opening one extra wall at each. A braided maze always offers a way forward, which removes the main source of frustration — being blocked and having to erase. Braid ratio scales inversely with difficulty.
-2. **Dead-end depth capping.** Repeatedly find the deepest dead-end branch and open a wall at its tip to a neighbour, until `Dmax ≤ k`. At level 1, set `k = 3`, so a child cannot go more than three cells wrong before finding a way on.
+**Braiding is U-shaped, not monotonic** — the plan originally had this wrong. Measured on a 21×28
+grid, sidewinder scores 0.430 unbraided, falls to 0.357 at braid 0.2, and climbs back to 0.569 at
+0.8. Kruskal does the same. Opening a few dead ends shortens the route and thins the choices;
+opening most of them merges the whole off-route area into one connected mass a solver can wander
+deep into, and `D̄` nearly doubles.
 
-Note that braiding makes a maze *easier to move through* and *harder to solve optimally*, since dead-end-filling no longer works. Both effects are wanted here. The exact ratio for young children should be tuned against real children, not chosen from theory.
+The reason is worth stating plainly: **dead ends are feedback.** A wall tells a child they are
+wrong. Remove them all and the signal goes with them, leaving open space and no sense of
+progress. The measured minimum sits near 0.2–0.4, so no level braids beyond that — the opposite
+of this plan's original "braid heavily for the youngest".
+
+### What difficulty cannot promise
+
+Normalizing by cell count does not make levels comparable across cell sizes, and no other
+normalizer does either. Sidewinder's route length scales with the perimeter (√cells) and the
+backtracker's with the area, so dividing by cell count over-corrects the first and roughly fits
+the second: sidewinder at braid 0.3 scores 0.474 on crayon and 0.170 on fine pen, while the
+backtracker scores 0.814 and 0.682.
+
+So the promise is narrower and honest: **at whatever cell size you picked, level 1 < 2 < 3 < 4 < 5.**
+That holds at all eight paper × cell-size combinations and is enforced by test.
+
+One limit falls out of it. On the crayon grid (315 cells) the braid lever saturates — the
+backtracker scores the same at braid 0.2 and 0.3, because there are too few dead ends to open and
+too little route to shorten — so levels 3 to 5 compress. Level 5 is 4.1× level 1 at fine pen but
+only 1.75× on crayon. That is a limit of how much maze fits on a page at that corridor width, not
+a defect in the recipes.
 
 ## 5. Line styles
 

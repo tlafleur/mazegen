@@ -1,4 +1,4 @@
-import type { CellId, EdgeId, Topology } from '../types'
+import type { CellId, EdgeId, RowStructured, Topology } from '../types'
 
 export interface Point {
   readonly x: number
@@ -19,7 +19,7 @@ export type Segment = readonly [number, number]
  * Coordinates are millimetres with the origin at the maze's top-left corner.
  * Placing the maze on a page is the renderer's job.
  */
-export class SquareGrid implements Topology {
+export class SquareGrid implements Topology, RowStructured {
   readonly cellCount: number
   readonly edgeCount: number
   readonly vertexCount: number
@@ -85,6 +85,20 @@ export class SquareGrid implements Topology {
     if (r > 0) out.push(this.hCount + (r - 1) * this.cols + c)
     if (r < this.rows - 1) out.push(this.hCount + r * this.cols + c)
     return out
+  }
+
+  // --- RowStructured, for carvers that work in rows and columns ---
+
+  edgeEast(cell: CellId): EdgeId {
+    const c = this.colOf(cell)
+    if (c === this.cols - 1) return -1
+    return this.rowOf(cell) * (this.cols - 1) + c
+  }
+
+  edgeNorth(cell: CellId): EdgeId {
+    const r = this.rowOf(cell)
+    if (r === 0) return -1
+    return this.hCount + (r - 1) * this.cols + this.colOf(cell)
   }
 
   // --- geometry ---
