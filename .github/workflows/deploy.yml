@@ -1,10 +1,9 @@
-name: Deploy to Pages
+name: Build and deploy
 
-# Points at the working branch for now. Move this to `main` once the work
-# lands there — main has no app yet, so building it would just fail.
 on:
   push:
-    branches: [claude/maze-generator-design-7dz1bu]
+    branches: [main]
+  pull_request:
   workflow_dispatch:
 
 permissions:
@@ -44,6 +43,9 @@ jobs:
 
   deploy:
     needs: build
+    # The github-pages environment only accepts deployments from the default
+    # branch, so pull requests build and test but stop short of publishing.
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     environment:
       name: github-pages

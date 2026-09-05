@@ -20,8 +20,9 @@ What works:
 
 ## Live
 
-https://tlafleur.github.io/mazegen/ — deployed from the working branch by
-`.github/workflows/deploy.yml` on every push, with the tests gating the deploy.
+https://tlafleur.github.io/mazegen/ — deployed from `main` by
+`.github/workflows/deploy.yml`, with the tests gating the deploy. Pull requests run the same
+build and tests but stop short of publishing.
 
 ## Running it
 
