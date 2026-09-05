@@ -18,6 +18,11 @@ What works:
 - SVG output sized to the sheet in real millimetres
 - Browser print via `@page`
 
+## Live
+
+https://tlafleur.github.io/mazegen/ — deployed from the working branch by
+`.github/workflows/deploy.yml` on every push, with the tests gating the deploy.
+
 ## Running it
 
 ```sh
