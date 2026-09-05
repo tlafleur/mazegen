@@ -1,0 +1,212 @@
+:root {
+  --bg: #e9ebef;
+  --panel: #ffffff;
+  --ink: #16181d;
+  --muted: #6b7280;
+  --line: #d6d9de;
+  --accent: #1d4ed8;
+  color-scheme: light;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font: 16px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  -webkit-text-size-adjust: 100%;
+}
+
+/* Portrait: sheet above, controls below. Landscape: controls beside. */
+.app {
+  height: 100%;
+  display: grid;
+  grid-template-rows: 1fr auto;
+  min-height: 0;
+}
+
+@media (min-width: 900px) {
+  .app {
+    grid-template-rows: none;
+    grid-template-columns: 1fr 360px;
+  }
+}
+
+.stage {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  min-height: 0;
+  min-width: 0;
+  overflow: auto;
+}
+
+/* `display: contents` makes the SVG itself the flex item, so its max-height
+   percentage resolves against the stage. Wrapping it in a sized div instead
+   leaves the percentage resolving against an auto height, and the sheet
+   overflows rather than fitting. */
+.sheet {
+  display: contents;
+}
+
+/* The SVG carries its own intrinsic size in millimetres, so max-* plus auto
+   scales it down to fit while preserving the sheet's proportions. */
+.stage svg {
+  display: block;
+  width: auto;
+  height: auto;
+  max-width: 100%;
+  max-height: 100%;
+  box-shadow: 0 2px 14px rgb(0 0 0 / 0.18);
+}
+
+.controls {
+  background: var(--panel);
+  border-top: 1px solid var(--line);
+  padding: 16px;
+  padding-bottom: max(16px, env(safe-area-inset-bottom));
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+@media (min-width: 900px) {
+  .controls {
+    border-top: 0;
+    border-left: 1px solid var(--line);
+  }
+}
+
+h1 {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 650;
+}
+
+.phase {
+  color: var(--muted);
+  font-weight: 400;
+  font-size: 14px;
+}
+
+.group-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: 6px;
+}
+
+/* Two across, so four options read as a block rather than as three plus a
+   stray. */
+.chips {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+}
+
+/* Minimum 60px targets, per docs/DESIGN.md §8 — above the 44pt HIG floor. */
+.chip {
+  min-height: 60px;
+  padding: 10px 12px;
+  font: inherit;
+  font-weight: 550;
+  color: var(--ink);
+  background: #f3f4f6;
+  border: 2px solid transparent;
+  border-radius: 14px;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+
+.chip.on {
+  background: #e8efff;
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.meta {
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.meta code {
+  font-size: 12px;
+}
+
+.actions {
+  display: flex;
+  gap: 10px;
+}
+
+.big {
+  flex: 1;
+  min-height: 68px;
+  font: inherit;
+  font-size: 17px;
+  font-weight: 650;
+  border-radius: 16px;
+  border: 2px solid var(--line);
+  background: #f3f4f6;
+  color: var(--ink);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+
+.big.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.note {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+@media print {
+  html,
+  body,
+  #root {
+    height: auto;
+    background: #fff;
+  }
+
+  .app {
+    display: block;
+    height: auto;
+  }
+
+  .controls {
+    display: none !important;
+  }
+
+  .stage {
+    display: block;
+    padding: 0;
+    overflow: visible;
+  }
+
+  /* Exact millimetres are set alongside @page in App.tsx. */
+  .stage svg {
+    max-width: none;
+    max-height: none;
+    box-shadow: none;
+  }
+}
