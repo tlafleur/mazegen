@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { A4, CRAYON, FINE, LETTER, MARKER, PENCIL, PENS, gridSizeFor } from './page'
+import { A4, CRAYON, FINE, LETTER, MARKER, PENCIL, PENS, defaultPaperFor, gridSizeFor } from './page'
 import { chainSegments } from './chain'
 import { renderSvg } from './svg'
 import { generateMaze } from '../generate'
@@ -30,6 +30,31 @@ describe('gridSizeFor', () => {
         expect(rows * pen.pitch).toBeLessThanOrEqual(paper.height - 2 * 12.7)
       }
     }
+  })
+})
+
+describe('defaultPaperFor', () => {
+  it('picks Letter in the regions that use it', () => {
+    for (const locale of ['en-US', 'es-MX', 'en-CA', 'fr-CA', 'es-CL', 'fil-PH']) {
+      expect(defaultPaperFor(locale).id).toBe('letter')
+    }
+  })
+
+  it('picks A4 everywhere else', () => {
+    for (const locale of ['en-GB', 'de-DE', 'ja-JP', 'fr-FR', 'pt-BR', 'en-AU']) {
+      expect(defaultPaperFor(locale).id).toBe('a4')
+    }
+  })
+
+  it('resolves a bare language to its implied region', () => {
+    expect(defaultPaperFor('en').id).toBe('letter')
+    expect(defaultPaperFor('de').id).toBe('a4')
+  })
+
+  it('falls back to A4 when the locale is missing or unparseable', () => {
+    expect(defaultPaperFor(undefined).id).toBe('a4')
+    expect(defaultPaperFor('').id).toBe('a4')
+    expect(defaultPaperFor('not a locale!!').id).toBe('a4')
   })
 })
 

@@ -41,6 +41,13 @@ spills onto a second page.
 If the line does not measure 100 mm, that is the signal to bring the hand-rolled PDF writer
 forward from phase 2 and make it the primary output. See docs/DESIGN.md §7.
 
+**Pick the paper your printer actually holds.** There is no page size that prints 1:1 on both:
+Letter is 5.9 mm wider, A4 is 17.6 mm taller, so whichever you declare, the other printer
+scales the sheet down to fit. Printing an A4 sheet on a Letter printer lands around 91% once
+the printer's unprintable border is subtracted, and that scaling shrinks the cells with it — a
+12 mm crayon corridor becomes 10.9 mm. The app defaults the paper from the browser locale for
+this reason, and a scaled print is exactly what the 100 mm line is there to expose.
+
 ## Layout
 
 ```

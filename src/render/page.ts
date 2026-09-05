@@ -35,6 +35,32 @@ export const FINE: Pen = { id: 'fine', label: 'Fine pen', pitch: 4, stroke: 0.5 
 
 export const PENS: readonly Pen[] = [CRAYON, MARKER, PENCIL, FINE]
 
+/**
+ * Regions that use US Letter rather than A4.
+ *
+ * Paper choice has to match the printer, not taste: there is no page size that
+ * prints 1:1 on both. Letter is 5.9 mm wider, A4 is 17.6 mm taller, so a sheet
+ * declared as one gets scaled down to fit the other — and scaling silently
+ * breaks the promise cell size makes, since a 12 mm crayon corridor printed at
+ * 91% is a 10.9 mm corridor.
+ */
+const LETTER_REGIONS = new Set([
+  'US', 'CA', 'MX', 'PH', 'CL', 'CO', 'CR', 'DO', 'GT', 'HN', 'NI', 'PA', 'PR', 'SV', 'VE',
+])
+
+/** Best guess at the right paper for a viewer, from their locale. */
+export function defaultPaperFor(locale: string | undefined): Paper {
+  if (locale === undefined || locale === '') return A4
+  let region: string | undefined
+  try {
+    // maximize() fills in the implied region, so bare 'en' resolves to US.
+    region = new Intl.Locale(locale).maximize().region
+  } catch {
+    region = /[-_]([A-Za-z]{2})\b/.exec(locale)?.[1]
+  }
+  return region !== undefined && LETTER_REGIONS.has(region.toUpperCase()) ? LETTER : A4
+}
+
 export interface GridSize {
   readonly cols: number
   readonly rows: number

@@ -1,7 +1,7 @@
 import { useMemo, useState, type ReactNode } from 'react'
 import { generateMaze } from './generate'
 import { renderSvg } from './render/svg'
-import { CRAYON, LETTER, PAPERS, PENS, type Paper, type Pen } from './render/page'
+import { CRAYON, PAPERS, PENS, defaultPaperFor, type Paper, type Pen } from './render/page'
 
 function newSeed(): string {
   return Math.floor(Math.random() * 0x100000000).toString(36)
@@ -33,7 +33,7 @@ function Group({ label, children }: { label: string; children: ReactNode }) {
 }
 
 export default function App() {
-  const [paper, setPaper] = useState<Paper>(LETTER)
+  const [paper, setPaper] = useState<Paper>(() => defaultPaperFor(navigator.language))
   const [pen, setPen] = useState<Pen>(CRAYON)
   const [showSolution, setShowSolution] = useState(false)
   const [calibration, setCalibration] = useState(true)
@@ -118,7 +118,9 @@ export default function App() {
 
         <p className="note">
           Phase 0 exists to prove the print path. Print a sheet, measure the 100 mm line, and
-          compare — any difference is scaling applied between here and the paper.
+          compare — any difference is scaling applied between here and the paper. Pick the paper
+          your printer actually holds: the other size gets scaled down to fit, which shrinks the
+          cells along with it.
         </p>
       </div>
     </div>
