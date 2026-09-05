@@ -11,6 +11,12 @@ Printable black-and-white mazes, 8.5×11", generated on an iPad.
 
 Phone support is out of scope for v1 and tracked in the backlog.
 
+### Decisions settled
+
+- **Platform:** web app / PWA. No native build.
+- **Primary user: the child.** An adult sets things up and handles the printer, but the child is who chooses and operates. This is the decision with the widest consequences — it changes the v1 aesthetic, removes numbers from the interface, and moves on-screen play forward.
+- **Paper: US Letter and A4.** Page size is a parameter from the start.
+
 ## 2. Platform decision: static web app
 
 Recommendation: **Vite + React + TypeScript, no backend, installable as a PWA.**
@@ -87,6 +93,19 @@ Live area on Letter with 0.5" margins is 190.5 × 254 mm. Grid dimensions follow
 | Marker | 9 mm | 21 × 28 | 588 |
 | Pencil | 6 mm | 31 × 42 | 1302 |
 | Fine pen | 4 mm | 47 × 63 | 2961 |
+
+A4 is 210 × 297 mm, so its live area is 184.6 × 271.6 mm — narrower and taller:
+
+| Setting | Pitch | Grid (A4) | Cells |
+|---|---|---|---|
+| Crayon | 12 mm | 15 × 22 | 330 |
+| Marker | 9 mm | 20 × 30 | 600 |
+| Pencil | 6 mm | 30 × 45 | 1350 |
+| Fine pen | 4 mm | 46 × 67 | 3082 |
+
+Cell counts land within ~10% of Letter at every tier, so a single difficulty calibration covers both — the score in the next section uses cell count, not page dimensions.
+
+Two consequences of supporting both sizes: page dimensions and margins are parameters everywhere rather than constants, and **shape masks are authored in normalized coordinates** and fitted to the live area preserving aspect ratio. Letter's live area is 0.75 wide-to-tall, A4's is 0.68, so a mask hardcoded to one will distort on the other.
 
 Labelling these by drawing tool rather than by a number is more useful to a parent and to a child, and it caps the grid size honestly.
 
@@ -169,19 +188,27 @@ Sequencing: ship browser print first because it is ten lines, and **test it on a
 
 Also needed: a solution toggle (no answer / answer overlaid / answer on page 2).
 
-## 8. UI for children on an iPad
+## 8. UI, with the child as the operator
 
 Principles, each with a concrete mechanism:
 
-1. **Never a blank state.** The app opens with a finished, printable maze already on screen. There is no configuration form standing between the user and a result.
-2. **Presets first.** Four to six large cards — *Tiny Tot*, *Kindergarten*, *Big Kid*, *Challenge* — each showing a real thumbnail generated at those settings, so a pre-reader picks by looking. Individual controls live behind an "More options" disclosure.
-3. **Stepped chips, not sliders.** Sliders are precision instruments and children are not precise. Every control is 3–5 large discrete options. Minimum target 60 pt, well above the 44 pt HIG floor, with generous spacing.
+1. **Never a blank state.** The app opens with a finished, printable maze already on screen. No configuration form stands between the user and a result.
+2. **Pictures, not words, and no numbers at all.** Preset cards show a real thumbnail generated at those settings. Difficulty is shown as one to five stars or as character sizes, never as a number. Cell size is shown as a picture of a crayon, marker, pencil, or pen. A pre-reader should be able to operate the entire primary flow.
+3. **Stepped chips, not sliders.** Sliders are precision instruments and children are not precise. Every control is 3–5 large discrete options at a minimum of 60 pt, well above the 44 pt HIG floor, with generous spacing.
 4. **Nothing is destructive.** A large "New maze" button reshuffles the seed, and a filmstrip of the last ~10 mazes lets a child recover one they liked. The main way to lose in a generator app is losing the good result; this removes it.
 5. **Live preview.** Settings apply immediately. Generation is sub-millisecond at these sizes; move to a Web Worker only if measurement shows a dropped frame.
-6. **One-tap print.** A single large button. No dialog of our own before the system print sheet.
-7. **No typing** anywhere in the core flow. Keyboards cover half the screen and children type slowly. The optional name-maze feature is the one exception.
-8. **Both orientations.** Landscape puts the preview beside the controls; portrait puts it above them.
-9. **Touch-resistant preview.** The preview ignores drags by default, so a hand resting on the screen does nothing. On-screen solving (§10) is a deliberate mode, not the default.
+6. **No typing** anywhere in the primary flow. Keyboards cover half the screen and children type slowly. The optional name-maze feature is the one exception, and it belongs in the grown-up area.
+7. **Both orientations.** Landscape puts the preview beside the controls; portrait puts it above them.
+8. **Touch-resistant preview.** The preview ignores drags outside of play mode, so a hand resting on the screen does nothing.
+9. **Standalone PWA display mode.** `display: standalone` in the manifest removes Safari's chrome, so there is no address bar for a child to tap out of the app.
+10. **A grown-up area, unobtrusive rather than locked.** Paper size, margins, printer settings, and name mazes live behind a small, plainly-labelled entry point. Not a password gate — just somewhere a child will not wander by accident.
+
+### The print sheet is not child-operable
+
+Worth stating plainly, because it constrains the design: tapping print hands control to the iOS system print sheet, which is dense, text-heavy, and requires choosing a printer. No amount of work on our side changes that. So the realistic division of labour is that the child designs and an adult completes the print. Two implications:
+
+- The print button should produce a queued, obviously-finished result the adult can act on later, not require the adult to be standing there at the moment of choice. A "print queue" of chosen mazes the adult flushes in one go fits the actual household situation better than one-tap-print-now, and it feeds directly into the booklet export in §10.
+- Because printing needs an adult and a printer, **on-screen solving is what the child will actually do most of the time.** That moves it from a nice-to-have to a phase 2 feature. Mechanically it is easy and naturally forgiving: track which cell the finger is in and only permit movement to adjacent cells sharing a passage, snapping the drawn line to cell centres with rounded joins. The cell itself is the tap target, so at crayon size that is a 12 mm target — larger than any button in the app.
 
 ## 9. Testing
 
@@ -197,16 +224,16 @@ Vitest, running against `core/` in Node with no browser needed.
 ## 10. Phasing
 
 **Phase 0 — de-risk (days)**
-Square grid, recursive backtracker, solver, SVG output, browser print. Print it on a real iPad to a real printer. Nothing else matters until this works.
+Square grid, recursive backtracker, solver, plain straight-line SVG, browser print. Print it on a real iPad to a real printer, on both Letter and A4. Nothing else matters until this works. Deliberately style-free: this phase proves the pipeline, not the look.
 
-**Phase 1 — v1**
-Difficulty model with verification and calibration. Cell-size setting. Rectangle, circle, heart, star. Straight and rounded styles. Preset cards plus advanced disclosure. Solution toggle. Seeds, regenerate, history filmstrip. PWA install. Deploy static.
+**Phase 1 — v1, Doodle World**
+Difficulty model with verification and calibration. Cell-size setting. Rectangle, circle, heart, star, plus three or four object shapes. Rounded and jitter styles, with Classic available as the degenerate case (no jitter, no rounding). Illustrated start and end markers. Picture-based preset cards, no numbers. Solution toggle. Seeds, regenerate, history filmstrip. Grown-up area. PWA install in standalone mode. Deploy static.
 
 **Phase 2**
-Hand-rolled PDF export as the default output. Hex and polar grids. Jitter and sketch styles. Object shapes and letter/name mazes.
+On-screen solving mode — promoted from phase 3, since it is what the child does when no adult is at the printer. Hand-rolled PDF export as the default output. Print queue. Hex and polar grids. Sketch and Cave styles. More object shapes and letter/name mazes.
 
 **Phase 3**
-Batch booklet export — "20 pages, increasing difficulty" as a single PDF, which is nearly free once phase 2 lands and is the actual use case for a parent before a car trip. On-screen solving mode. Phone layout. Share codes.
+Batch booklet export — "20 pages, increasing difficulty" as a single PDF, which is nearly free once phase 2 lands and is the real use case for an adult before a car trip. Phone layout. Share codes. Objective mazes (collect three stars in order).
 
 ## 11. Three creative directions
 
@@ -221,12 +248,20 @@ Every maze looks hand-drawn. Wobbly lines, rounded corners, varying stroke weigh
 ### C. Cave
 Render the passages rather than the walls, using the two-pass stroke from §5. The maze reads as a network of tunnels or a river delta rather than a grid. Distinctive — very few generators do this — and it is the same data with a different renderer.
 
-**Recommendation:** build A for v1, because it is the fastest route to a genuinely good printed page and it validates the whole pipeline. Add B second as the differentiator, since it is where the child-appeal is. C is a small amount of additional work once the renderer is factored properly and is worth having as a third option.
+**Recommendation, given that the child is the primary user: build B for v1.**
 
-A possible fourth direction for later: mazes with objectives — collect three stars in order, or a maze whose solution path draws a hidden picture.
+The earlier draft of this plan put A first on the grounds that it reaches a good printed page fastest. With the child operating the app, that ordering is wrong — the aesthetic *is* the interface for someone who cannot read the labels, and a child picks a dinosaur maze over a rectangle every time.
 
-## 12. Open questions
+The cost of starting at B is smaller than it looks. Phase 0 already proves the pipeline with plain straight lines, so the print risk is retired before any style work begins. On top of that, B needs corner rounding (~20 lines), lattice jitter (~30 lines), a mask library that is mostly SVG authoring rather than code, and a decoration slot system. Call it two or three days beyond A. And A comes out of it free: Classic is Doodle World with jitter and rounding set to zero, so it ships as an alternate style rather than as separate work.
 
-1. Web app, or does this need to be in the App Store? Everything above assumes web.
-2. Who operates the app — the child choosing their own maze, or an adult configuring one for them? This changes the UI substantially.
-3. US Letter only, or A4 as well? A4 is cheap to add now and awkward to retrofit into a hardcoded print path.
+C follows in phase 2 — it is a second renderer over data that already exists.
+
+A fourth direction for later: mazes with objectives — collect three stars in order, or a maze whose solution path draws a hidden picture.
+
+## 12. Remaining questions
+
+Platform, primary user, and paper size are settled (§1). Still open, none of them blocking:
+
+1. **How much play versus how much printing?** If on-screen solving turns out to be the main activity, the app is a toy that happens to print, and that would argue for pulling it into phase 1. Worth revisiting after the first build is in front of a child.
+2. **Braid ratio for young children.** The mechanism in §4 is sound; the specific ratio that keeps a five-year-old moving without letting them circle indefinitely should be tuned against real children rather than chosen from theory.
+3. **How many shapes before variety stops mattering?** Mask authoring is the one part of this that scales linearly with effort rather than being a one-time cost. Six good shapes may beat twenty mediocre ones.
