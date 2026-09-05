@@ -214,11 +214,63 @@ All styles are pure functions of the wall geometry plus a style seed. Changing s
 
 ## 6. Shape
 
-A shape is a mask: a predicate over cell centres, derived from an SVG path, a text glyph, or a thresholded image. Cells outside the mask are removed from the graph before carving. After masking, keep only the largest connected component and discard strays.
+A shape is a mask: a test for whether a point is inside, evaluated at each cell centre. Cells
+outside it are removed from the graph *before* carving, so a carver sees a smaller graph rather
+than a rectangle with holes and needs no knowledge of shapes at all. A rectangle is the same class
+with a mask that admits everything, so there is one implementation of outlines and openings rather
+than two.
 
-Start and end placement for arbitrary shapes: run double-BFS to find the graph diameter and open the boundary at those two cells. That gives a sensible, far-apart pair for any outline without hand-authoring.
+Removing cells before carving also matters for difficulty: the score divides by cell count, and
+that has to be the cells actually in the maze, not the bounding box.
 
-Shape library for v1: rectangle, rounded rectangle, circle, oval, heart, star. Phase 2 adds objects (rocket, dinosaur, fish, cupcake) and **letter mazes** — type a child's initial or name and get a maze in that shape. Letter masks are near-free once glyph rasterization exists, and they are a strong reason for a child to want a particular maze.
+**Mask coordinates** are centred on the grid and scaled uniformly so the *shorter* axis spans
+[-1, 1]. Uniform scaling is what keeps a circle a circle — Letter's live area is 0.75 wide-to-tall
+and A4's is 0.68, so a mask written against a unit square prints visibly different on the two
+papers.
+
+**Only the largest connected piece survives.** A thin shape can leave islands, and a maze in two
+pieces is unsolvable.
+
+**Entrance and exit** come from a double BFS over the outline cells, run on the *uncarved*
+adjacency so they are a property of the shape and stay put however the maze is carved. The opening
+is cut into whichever face of that cell points most directly away from the middle of the grid, so
+it lands on the outside of a star's point rather than in its armpit. On a rectangle this reproduces
+the obvious answer: opposite corners.
+
+### The library, and what it costs
+
+| Shape | Coverage of the page | Cells at marker (21×28) |
+|---|---|---|
+| Page | 100% | 588 |
+| Rounded | 98% | 576 |
+| Oval | 78% | 456 |
+| Circle | 59% | 346 |
+| Heart | 52% | 306 |
+| Star | 34% | 200 |
+
+Two things went wrong here and are worth recording.
+
+**The heart was clipping.** The curve `(x² + y² - 1)³ - x²y³ ≤ 0` is neither centred nor a unit
+shape: sampled, its bounding box is x ±1.138 and y −1.0 to 1.2. Scaled as though it were a unit
+circle it runs past the page edge and prints with its sides sliced off — while *appearing* fine,
+because clipping raised its page coverage to 75%. The scale and the vertical offset both come from
+that measured box.
+
+**A textbook star is too thin to be a maze.** At the usual inner radius of 0.42 the points narrow
+to single cells: no choice to make, and visually a spike stuck on the side of the shape. At 0.6 the
+star covers 34% of the page rather than 23%, with about one such cell per point instead of five,
+and still plainly reads as a star. Both properties are held by test.
+
+### Sidewinder cannot run on a shape
+
+Sidewinder carves east along a whole row and then north out of it, so ragged rows rule it out — the
+`RowStructured` interface exists to make that a compile-time fact rather than a runtime surprise.
+Level 1 therefore carries a fallback, Kruskal at a higher braid, which measures below level 2 and
+keeps the ladder intact on every shape.
+
+Phase 2 adds objects (rocket, dinosaur, fish, cupcake) and **letter mazes** — type a child's
+initial and get a maze in that shape. Both are masks like any other; letters need only glyph
+rasterization, and the polygon mask already in place covers the objects.
 
 ## 7. Printing — the main risk
 

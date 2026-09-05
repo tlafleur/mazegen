@@ -1,5 +1,5 @@
 import type { CellId, Maze } from '../core/types'
-import type { Point, Segment, SquareGrid } from '../core/grid/square'
+import type { PlanarGrid, Point, Segment } from '../core/grid/planar'
 import { chainSegments } from './chain'
 import { DEFAULT_MARGIN, type Paper } from './page'
 
@@ -41,7 +41,7 @@ function pathFromPoints(points: readonly Point[]): string {
  * reason the output is SVG rather than a canvas bitmap. See docs/DESIGN.md §7.
  */
 export function renderSvg(
-  grid: SquareGrid,
+  grid: PlanarGrid,
   maze: Maze,
   solution: CellId[] | null,
   opts: RenderOptions,
@@ -54,8 +54,9 @@ export function renderSvg(
   const ox = margin + (paper.width - 2 * margin - grid.width) / 2
   const oy = margin + (paper.height - 2 * margin - grid.height) / 2
 
-  const segments: Segment[] = grid.boundarySegments()
-  for (let e = 0; e < grid.edgeCount; e++) {
+  // The outline, minus the two openings the maze enters and leaves through.
+  const segments: Segment[] = grid.boundarySegments([maze.start, maze.end])
+  for (let e = 0; e < maze.topo.edgeCount; e++) {
     if (maze.open[e] === 0) segments.push(grid.wallSegment(e))
   }
 
@@ -71,8 +72,8 @@ export function renderSvg(
 
   let solutionPath = ''
   if (opts.showSolution && solution && solution.length > 0) {
-    const entry = grid.entrancePoint()
-    const exit = grid.exitPoint()
+    const entry = grid.openingPoint(maze.start)
+    const exit = grid.openingPoint(maze.end)
     const points: Point[] = [
       { x: entry.x + ox, y: entry.y + oy },
       ...solution.map((c) => {

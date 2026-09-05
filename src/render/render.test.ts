@@ -2,8 +2,16 @@ import { describe, expect, it } from 'vitest'
 import { A4, CRAYON, FINE, LETTER, MARKER, PENCIL, PENS, defaultPaperFor, gridSizeFor } from './page'
 import { chainSegments } from './chain'
 import { renderSvg } from './svg'
-import { generateMaze } from '../generate'
-import type { Segment } from '../core/grid/square'
+import { generateMaze, shapesFor } from '../generate'
+import type { Level } from '../core/difficulty'
+import type { Paper, Pen } from './page'
+
+/** A rectangular maze at the hardest level, the busiest case for rendering. */
+function gen(paper: Paper, pen: Pen, seed: string, level: Level = 5) {
+  const shape = shapesFor(paper, pen)[0] as { id: string; label: string; mask: () => boolean }
+  return generateMaze({ paper, pen, level, shape, seed })
+}
+import type { Segment } from '../core/grid/planar'
 
 describe('gridSizeFor', () => {
   // These are the tables in docs/DESIGN.md §4. If a change moves them, the doc
@@ -118,8 +126,8 @@ describe('chainSegments', () => {
   })
 
   it('emits every wall of a real maze exactly once', () => {
-    const { grid, maze } = generateMaze(LETTER, PENCIL, 'chain-check')
-    const segs: Segment[] = grid.boundarySegments()
+    const { grid, maze } = gen(LETTER, PENCIL, 'chain-check')
+    const segs: Segment[] = grid.boundarySegments([maze.start, maze.end])
     for (let e = 0; e < grid.edgeCount; e++) {
       if (maze.open[e] === 0) segs.push(grid.wallSegment(e))
     }
@@ -131,8 +139,8 @@ describe('chainSegments', () => {
   })
 
   it('collapses thousands of segments into far fewer subpaths', () => {
-    const { grid, maze } = generateMaze(LETTER, PENCIL, 'chain-count')
-    const segs: Segment[] = grid.boundarySegments()
+    const { grid, maze } = gen(LETTER, PENCIL, 'chain-count')
+    const segs: Segment[] = grid.boundarySegments([maze.start, maze.end])
     for (let e = 0; e < grid.edgeCount; e++) {
       if (maze.open[e] === 0) segs.push(grid.wallSegment(e))
     }
@@ -144,7 +152,7 @@ describe('chainSegments', () => {
 
 describe('renderSvg', () => {
   it('sizes the document to the sheet in millimetres', () => {
-    const { grid, maze, solution } = generateMaze(LETTER, CRAYON, 'svg-letter')
+    const { grid, maze, solution } = gen(LETTER, CRAYON, 'svg-letter')
     const svg = renderSvg(grid, maze, solution, { paper: LETTER, stroke: CRAYON.stroke })
     expect(svg).toContain('width="215.9mm"')
     expect(svg).toContain('height="279.4mm"')
@@ -152,14 +160,14 @@ describe('renderSvg', () => {
   })
 
   it('uses A4 dimensions for A4', () => {
-    const { grid, maze, solution } = generateMaze(A4, CRAYON, 'svg-a4')
+    const { grid, maze, solution } = gen(A4, CRAYON, 'svg-a4')
     const svg = renderSvg(grid, maze, solution, { paper: A4, stroke: CRAYON.stroke })
     expect(svg).toContain('width="210mm"')
     expect(svg).toContain('height="297mm"')
   })
 
   it('omits the solution unless asked', () => {
-    const { grid, maze, solution } = generateMaze(LETTER, CRAYON, 'svg-solution')
+    const { grid, maze, solution } = gen(LETTER, CRAYON, 'svg-solution')
     const without = renderSvg(grid, maze, solution, { paper: LETTER, stroke: 1 })
     const with_ = renderSvg(grid, maze, solution, {
       paper: LETTER,
@@ -171,7 +179,7 @@ describe('renderSvg', () => {
   })
 
   it('draws a 100 mm reference line when calibration is on', () => {
-    const { grid, maze, solution } = generateMaze(LETTER, CRAYON, 'svg-rule')
+    const { grid, maze, solution } = gen(LETTER, CRAYON, 'svg-rule')
     const svg = renderSvg(grid, maze, solution, {
       paper: LETTER,
       stroke: 1,
@@ -184,7 +192,7 @@ describe('renderSvg', () => {
   })
 
   it('escapes caption text', () => {
-    const { grid, maze, solution } = generateMaze(LETTER, CRAYON, 'svg-esc')
+    const { grid, maze, solution } = gen(LETTER, CRAYON, 'svg-esc')
     const svg = renderSvg(grid, maze, solution, {
       paper: LETTER,
       stroke: 1,
@@ -196,7 +204,7 @@ describe('renderSvg', () => {
   })
 
   it('keeps all geometry inside the page', () => {
-    const { grid, maze, solution } = generateMaze(LETTER, PENCIL, 'svg-bounds')
+    const { grid, maze, solution } = gen(LETTER, PENCIL, 'svg-bounds')
     const svg = renderSvg(grid, maze, solution, {
       paper: LETTER,
       stroke: PENCIL.stroke,
@@ -217,8 +225,8 @@ describe('renderSvg', () => {
   })
 
   it('is deterministic', () => {
-    const a = generateMaze(LETTER, CRAYON, 'repeat')
-    const b = generateMaze(LETTER, CRAYON, 'repeat')
+    const a = gen(LETTER, CRAYON, 'repeat')
+    const b = gen(LETTER, CRAYON, 'repeat')
     const opts = { paper: LETTER, stroke: CRAYON.stroke, showSolution: true }
     expect(renderSvg(a.grid, a.maze, a.solution, opts)).toBe(
       renderSvg(b.grid, b.maze, b.solution, opts),

@@ -1,6 +1,7 @@
 import { useMemo, useState, type ReactNode } from 'react'
-import { generateMaze } from './generate'
+import { generateMaze, shapesFor } from './generate'
 import { renderSvg } from './render/svg'
+import { RECIPES, type Level } from './core/difficulty'
 import { CRAYON, PAPERS, PENS, defaultPaperFor, type Paper, type Pen } from './render/page'
 
 function newSeed(): string {
@@ -35,17 +36,25 @@ function Group({ label, children }: { label: string; children: ReactNode }) {
 export default function App() {
   const [paper, setPaper] = useState<Paper>(() => defaultPaperFor(navigator.language))
   const [pen, setPen] = useState<Pen>(CRAYON)
+  const [level, setLevel] = useState<Level>(3)
+  const [shapeId, setShapeId] = useState('rectangle')
   const [showSolution, setShowSolution] = useState(false)
   const [calibration, setCalibration] = useState(true)
   const [seed, setSeed] = useState(newSeed)
 
-  const { grid, svg } = useMemo(() => {
-    const generated = generateMaze(paper, pen, seed)
-    const g = generated.grid
-    const caption = `100 mm · ${paper.label} · ${pen.label} · ${g.cols}×${g.rows} · seed ${seed}`
+  // Shapes are fitted to the sheet's proportions, so the list depends on both.
+  const shapes = useMemo(() => shapesFor(paper, pen), [paper, pen])
+  const shape = shapes.find((s) => s.id === shapeId) ?? (shapes[0] as (typeof shapes)[number])
+
+  const { metrics, cellCount, svg } = useMemo(() => {
+    const generated = generateMaze({ paper, pen, level, shape, seed })
+    const caption =
+      `100 mm · ${paper.label} · ${pen.label} · ${shape.label} · ` +
+      `level ${level} · seed ${seed}`
     return {
-      grid: g,
-      svg: renderSvg(g, generated.maze, generated.solution, {
+      metrics: generated.metrics,
+      cellCount: generated.grid.cellCount,
+      svg: renderSvg(generated.grid, generated.maze, generated.solution, {
         paper,
         stroke: pen.stroke,
         showSolution,
@@ -53,7 +62,7 @@ export default function App() {
         caption,
       }),
     }
-  }, [paper, pen, seed, showSolution, calibration])
+  }, [paper, pen, level, shape, seed, showSolution, calibration])
 
   // @page cannot be driven by custom properties, so the rule is rebuilt
   // whenever the paper changes. Forcing explicit millimetres on the SVG at
@@ -92,6 +101,22 @@ export default function App() {
           ))}
         </Group>
 
+        <Group label="Difficulty">
+          {RECIPES.map((r) => (
+            <Chip key={r.level} on={r.level === level} onClick={() => setLevel(r.level)}>
+              {r.label}
+            </Chip>
+          ))}
+        </Group>
+
+        <Group label="Shape">
+          {shapes.map((s) => (
+            <Chip key={s.id} on={s.id === shape.id} onClick={() => setShapeId(s.id)}>
+              {s.label}
+            </Chip>
+          ))}
+        </Group>
+
         <Group label="Show">
           <Chip on={showSolution} onClick={() => setShowSolution((v) => !v)}>
             Answer
@@ -102,7 +127,10 @@ export default function App() {
         </Group>
 
         <div className="meta">
-          {grid.cols} × {grid.rows} cells · {grid.cellCount} total · {pen.pitch} mm pitch
+          {cellCount} cells · {pen.pitch} mm pitch · score {metrics.score.toFixed(2)}
+          <br />
+          route {metrics.solutionLength} · {metrics.decisionPoints} turns · longest dead end{' '}
+          {metrics.maxDeadEndRun}
           <br />
           seed <code>{seed}</code>
         </div>

@@ -1,6 +1,29 @@
 export type { CellId, EdgeId, Maze, RowStructured, Topology } from './types'
 export { hashSeed, makeRng, type Rng } from './rng'
-export { SquareGrid, type Point, type Segment } from './grid/square'
+export { SquareGrid } from './grid/square'
+export { MaskedGrid } from './grid/masked'
+export {
+  EAST,
+  FACE_NORMALS,
+  NORTH,
+  SOUTH,
+  WEST,
+  type PlanarGrid,
+  type Point,
+  type Segment,
+} from './grid/planar'
+export {
+  circleMask,
+  ellipseMask,
+  heartMask,
+  polygonMask,
+  rectangleMask,
+  roundedRectMask,
+  shapeLibrary,
+  starMask,
+  type Mask,
+  type Shape,
+} from './grid/mask'
 
 export { carveBacktracker } from './carve/backtracker'
 export { carveKruskal } from './carve/kruskal'
@@ -22,6 +45,7 @@ export {
   RECIPES,
   carveAtLevel,
   recipeFor,
+  type CarvableGrid,
   type CarverName,
   type Level,
   type LevelRecipe,

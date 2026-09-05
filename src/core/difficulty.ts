@@ -1,4 +1,4 @@
-import type { Maze, RowStructured, Topology } from './types'
+import type { CellId, Maze, RowStructured, Topology } from './types'
 import type { Rng } from './rng'
 import { carveBacktracker } from './carve/backtracker'
 import { carveKruskal } from './carve/kruskal'
@@ -19,6 +19,20 @@ export interface LevelRecipe {
   readonly braid: number
   /** Longest dead-end corridor allowed, or 0 to leave them alone. */
   readonly deadEndCap: number
+  /**
+   * What to carve with when the grid has no full rows.
+   *
+   * Sidewinder runs east along a whole row and carves north out of it, so a
+   * masked shape with ragged rows rules it out. Level 1 is the only recipe that
+   * needs this; the braid is raised to compensate for losing sidewinder's
+   * give-away top corridor, keeping it below level 2.
+   */
+  readonly withoutRows?: { readonly carver: CarverName; readonly braid: number }
+}
+
+/** A grid that can say whether it has full rows to carve along. */
+export type CarvableGrid = Topology & {
+  rowStructured?(): (Topology & RowStructured) | null
 }
 
 /**
@@ -46,7 +60,14 @@ export interface LevelRecipe {
  * level 1 by name rather than chosen by score.
  */
 export const RECIPES: readonly LevelRecipe[] = [
-  { level: 1, label: 'Gentle', carver: 'sidewinder', braid: 0.3, deadEndCap: 3 },
+  {
+    level: 1,
+    label: 'Gentle',
+    carver: 'sidewinder',
+    braid: 0.3,
+    deadEndCap: 3,
+    withoutRows: { carver: 'kruskal', braid: 0.3 },
+  },
   { level: 2, label: 'Easy', carver: 'kruskal', braid: 0, deadEndCap: 4 },
   { level: 3, label: 'Medium', carver: 'backtracker', braid: 0.3, deadEndCap: 0 },
   { level: 4, label: 'Hard', carver: 'backtracker', braid: 0.1, deadEndCap: 0 },
@@ -62,30 +83,40 @@ export function recipeFor(level: Level): LevelRecipe {
 /**
  * Carve a maze to a level's recipe.
  *
- * Takes `Topology & RowStructured` because sidewinder needs rows and columns;
- * a topology without them cannot offer level 1 as written.
+ * Falls back to `withoutRows` when the recipe wants sidewinder but the grid
+ * cannot offer full rows — which is what happens on every masked shape.
  */
 export function carveAtLevel(
-  grid: Topology & RowStructured,
+  grid: CarvableGrid,
   rng: Rng,
   level: Level,
-  start = 0,
-  end = grid.cellCount - 1,
+  start: CellId = 0,
+  end: CellId = grid.cellCount - 1,
 ): Maze {
   const recipe = recipeFor(level)
+  const rows = grid.rowStructured?.() ?? null
+
+  let carver = recipe.carver
+  let braidRatio = recipe.braid
+  if (carver === 'sidewinder' && rows === null) {
+    const fallback = recipe.withoutRows
+    if (fallback === undefined) throw new Error(`level ${level} needs full rows`)
+    carver = fallback.carver
+    braidRatio = fallback.braid
+  }
 
   const open =
-    recipe.carver === 'sidewinder'
-      ? carveSidewinder(grid, rng)
-      : recipe.carver === 'kruskal'
+    carver === 'sidewinder'
+      ? carveSidewinder(rows as Topology & RowStructured, rng)
+      : carver === 'kruskal'
         ? carveKruskal(grid, rng)
-        : recipe.carver === 'wilson'
+        : carver === 'wilson'
           ? carveWilson(grid, rng)
           : carveBacktracker(grid, rng)
 
   const maze: Maze = { topo: grid, open, start, end }
 
-  if (recipe.braid > 0) braid(maze, rng, recipe.braid)
+  if (braidRatio > 0) braid(maze, rng, braidRatio)
   if (recipe.deadEndCap > 0) capDeadEndRun(maze, rng, recipe.deadEndCap)
 
   return maze
