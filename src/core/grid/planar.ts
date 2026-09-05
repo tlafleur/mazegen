@@ -47,4 +47,13 @@ export interface PlanarGrid {
   boundarySegments(openAt?: readonly CellId[]): Segment[]
   /** Midpoint of a cell's opening face, where the solution line crosses out. */
   openingPoint(cell: CellId): Point
+  /**
+   * The two lattice vertices bounding that opening face, or null for a cell
+   * that is not on the outline.
+   *
+   * The renderer needs the vertices rather than the midpoint so it can displace
+   * them the same way it displaces the walls; taking a fixed midpoint would
+   * leave the solution line detached from its own gap once jitter is on.
+   */
+  openingSegment(cell: CellId): Segment | null
 }

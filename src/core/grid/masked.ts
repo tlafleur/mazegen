@@ -190,6 +190,12 @@ export class MaskedGrid implements Topology, PlanarGrid {
     return this.base.faceMidpoint(this.toBase[cell] as CellId, dir)
   }
 
+  openingSegment(cell: CellId): Segment | null {
+    const dir = this.openFace[cell] as number
+    if (dir === -1) return null
+    return this.base.faceSegment(this.toBase[cell] as CellId, dir)
+  }
+
   /** Cells with at least one face on the outline. */
   boundaryCells(): CellId[] {
     const out: CellId[] = []

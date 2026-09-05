@@ -2,12 +2,16 @@ import type { CellId, Maze } from '../core/types'
 import type { PlanarGrid, Point, Segment } from '../core/grid/planar'
 import { chainSegments } from './chain'
 import { DEFAULT_MARGIN, type Paper } from './page'
+import { CLASSIC, MAX_JITTER, jitterOffset, polylinePath, type Style } from './style'
 
 export interface RenderOptions {
   readonly paper: Paper
   readonly stroke: number
   readonly margin?: number
   readonly showSolution?: boolean
+  readonly style?: Style
+  /** Varies the jitter without changing the maze. */
+  readonly styleSeed?: number
   /** Draw a 100 mm reference line and a caption in the bottom margin. */
   readonly calibration?: boolean
   /** Caption text beside the reference line. */
@@ -23,13 +27,22 @@ function esc(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
 }
 
-function pathFromPoints(points: readonly Point[]): string {
-  let d = ''
-  for (let i = 0; i < points.length; i++) {
-    const p = points[i] as Point
-    d += (i === 0 ? 'M' : 'L') + f(p.x) + ' ' + f(p.y)
+/** Midpoint of a cell's opening, following the same displacement as the walls. */
+function openingPoint(
+  grid: PlanarGrid,
+  cell: CellId,
+  place: (vertex: number) => Point,
+  ox: number,
+  oy: number,
+): Point {
+  const seg = grid.openingSegment(cell)
+  if (seg === null) {
+    const p = grid.cellCenter(cell)
+    return { x: p.x + ox, y: p.y + oy }
   }
-  return d
+  const a = place(seg[0])
+  const b = place(seg[1])
+  return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }
 }
 
 /**
@@ -60,31 +73,40 @@ export function renderSvg(
     if (maze.open[e] === 0) segments.push(grid.wallSegment(e))
   }
 
+  const style = opts.style ?? CLASSIC
+  const radius = style.rounding * grid.pitch
+  // Clamped here rather than trusted from the style, so no style can define
+  // away the corridor-width guarantee.
+  const jitter = Math.min(style.jitter, MAX_JITTER) * grid.pitch
+  const styleSeed = opts.styleSeed ?? 0
+
+  /** A lattice vertex, displaced and moved onto the page. */
+  const place = (v: number): Point => {
+    const p = grid.vertexPos(v)
+    const j = jitterOffset(v, styleSeed, jitter)
+    return { x: p.x + j.x + ox, y: p.y + j.y + oy }
+  }
+
   let walls = ''
   for (const poly of chainSegments(segments, grid.vertexCount)) {
-    walls += pathFromPoints(
-      poly.map((v) => {
-        const p = grid.vertexPos(v)
-        return { x: p.x + ox, y: p.y + oy }
-      }),
-    )
+    walls += polylinePath(poly.map(place), radius)
   }
 
   let solutionPath = ''
   if (opts.showSolution && solution && solution.length > 0) {
-    const entry = grid.openingPoint(maze.start)
-    const exit = grid.openingPoint(maze.end)
+    // Cell centres are not lattice vertices, so they do not move; only the two
+    // ends, which have to follow their gaps in the wall.
     const points: Point[] = [
-      { x: entry.x + ox, y: entry.y + oy },
+      openingPoint(grid, maze.start, place, ox, oy),
       ...solution.map((c) => {
         const p = grid.cellCenter(c)
         return { x: p.x + ox, y: p.y + oy }
       }),
-      { x: exit.x + ox, y: exit.y + oy },
+      openingPoint(grid, maze.end, place, ox, oy),
     ]
     const dash = f(grid.pitch * 0.3)
     solutionPath =
-      `<path d="${pathFromPoints(points)}" fill="none" stroke="#000"` +
+      `<path d="${polylinePath(points, radius)}" fill="none" stroke="#000"` +
       ` stroke-width="${f(opts.stroke * 0.6)}" stroke-linecap="round"` +
       ` stroke-linejoin="round" stroke-dasharray="${dash} ${dash}"/>`
   }

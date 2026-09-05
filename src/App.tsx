@@ -2,6 +2,8 @@ import { useMemo, useState, type ReactNode } from 'react'
 import { generateMaze, shapesFor } from './generate'
 import { renderSvg } from './render/svg'
 import { RECIPES, type Level } from './core/difficulty'
+import { STYLES } from './render/style'
+import { hashSeed } from './core/rng'
 import { CRAYON, PAPERS, PENS, defaultPaperFor, type Paper, type Pen } from './render/page'
 
 function newSeed(): string {
@@ -38,6 +40,7 @@ export default function App() {
   const [pen, setPen] = useState<Pen>(CRAYON)
   const [level, setLevel] = useState<Level>(3)
   const [shapeId, setShapeId] = useState('rectangle')
+  const [styleId, setStyleId] = useState('doodle')
   const [showSolution, setShowSolution] = useState(false)
   const [calibration, setCalibration] = useState(true)
   const [seed, setSeed] = useState(newSeed)
@@ -46,11 +49,13 @@ export default function App() {
   const shapes = useMemo(() => shapesFor(paper, pen), [paper, pen])
   const shape = shapes.find((s) => s.id === shapeId) ?? (shapes[0] as (typeof shapes)[number])
 
+  const style = STYLES.find((s) => s.id === styleId) ?? (STYLES[0] as (typeof STYLES)[number])
+
   const { metrics, cellCount, svg } = useMemo(() => {
     const generated = generateMaze({ paper, pen, level, shape, seed })
     const caption =
       `100 mm · ${paper.label} · ${pen.label} · ${shape.label} · ` +
-      `level ${level} · seed ${seed}`
+      `level ${level} · ${style.label} · seed ${seed}`
     return {
       metrics: generated.metrics,
       cellCount: generated.grid.cellCount,
@@ -60,9 +65,12 @@ export default function App() {
         showSolution,
         calibration,
         caption,
+        style,
+        // Tied to the maze seed, so a new maze also reshuffles the wobble.
+        styleSeed: hashSeed(seed),
       }),
     }
-  }, [paper, pen, level, shape, seed, showSolution, calibration])
+  }, [paper, pen, level, shape, style, seed, showSolution, calibration])
 
   // @page cannot be driven by custom properties, so the rule is rebuilt
   // whenever the paper changes. Forcing explicit millimetres on the SVG at
@@ -112,6 +120,14 @@ export default function App() {
         <Group label="Shape">
           {shapes.map((s) => (
             <Chip key={s.id} on={s.id === shape.id} onClick={() => setShapeId(s.id)}>
+              {s.label}
+            </Chip>
+          ))}
+        </Group>
+
+        <Group label="Line style">
+          {STYLES.map((s) => (
+            <Chip key={s.id} on={s.id === style.id} onClick={() => setStyleId(s.id)}>
               {s.label}
             </Chip>
           ))}

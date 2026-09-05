@@ -202,15 +202,62 @@ a defect in the recipes.
 
 ## 5. Line styles
 
-All styles are pure functions of the wall geometry plus a style seed. Changing style never changes the maze topology, so the solution stays identical — worth stating as an invariant and testing.
+All styles are pure functions of the wall geometry plus a style seed. Changing style never changes
+the maze topology, so the solution stays identical — stated as an invariant and held by test.
 
-**Shared primitive: polyline chaining.** Walls start as segments between lattice vertices. Chain them into maximal polylines by walking through degree-2 vertices. This is the single most useful geometry step: it cuts thousands of SVG elements down to a few hundred subpaths in one `<path>`, produces correct joins, and every style below operates on polylines rather than loose segments.
+**Shared primitive: polyline chaining.** Walls start as segments between lattice vertices. Chaining
+them into maximal polylines collapses a maze from ~3070 loose segments into ~1180 subpaths in a
+single `<path>` with correct joins. Every style below operates on those polylines.
 
-1. **Straight** — the polylines as-is. Optionally `stroke-linejoin: round` for a softer look.
-2. **Rounded** — at each interior vertex `a→b→c`, cut back by `r = min(r_max, |ab|/2, |bc|/2)` and insert a quadratic Bézier. Robust, ~20 lines.
-3. **Zigzag / jitter** — displace the **lattice vertices**, not the wall segments. Offset is a pure function of `(vx, vy, seed)`, so every wall touching a vertex moves identically and walls never separate. Clamp the offset to 0.2 × pitch; worst-case corridor is then `0.6 × pitch − stroke`, which at 12 mm pitch is 6.2 mm — still wide enough for a crayon. That bound is a guarantee by construction, and the clamp gets a test.
-4. **Sketch** — draw each polyline twice with small independent perturbations and slight end overshoot. Hand-drawn look without a dependency, ~40 lines. Costs more ink.
-5. **Cave** — render the *passages* instead of the walls. Stroke the passage graph (cell centre to cell centre) at width `pitch − gap` in black with round caps and joins, then stroke the same path at `pitch − gap − 2·strokeWidth` in white on top. The result is outlined organic tunnels with no boolean geometry required. Two paths total.
+### Shipped in phase 1
+
+| Style | Rounding | Jitter | Look |
+|---|---|---|---|
+| Classic | 0 | 0 | Crisp and square |
+| Soft | 0.35 | 0 | Rounded corners, nothing else |
+| Doodle | 0.35 | 0.14 | Hand-drawn — the v1 default |
+| Wonky | 0.25 | 0.20 | As loose as the corridor guarantee allows |
+
+Classic falls out as the case where both settings are zero, exactly as planned: it ships as an
+alternate style rather than as separate work.
+
+**Rounding.** At each interior vertex `a→b→c`, cut back by `r = min(radius, |ab|/2, |bc|/2)` and
+insert a quadratic Bézier. The half-length cap matters — a radius wider than the segment pulls the
+wall away from where it belongs and lets adjacent corners eat into each other.
+
+Collinear runs are skipped rather than rounded. Chaining emits every lattice vertex a wall passes
+through, so a straight stretch arrives as several collinear points; rounding each would spend three
+path commands per cell drawing a straight line.
+
+Closed rings — the outline of a shape — are rounded all the way round including the join, or the
+outline has one flat corner wherever the walk happened to start.
+
+**Jitter displaces lattice vertices, not wall segments.** The displacement is a pure function of the
+vertex id and the seed, so the four walls meeting at a vertex all ask the same question and get the
+same answer. Perturbing segments independently would tear the maze open at every corner.
+
+The magnitude is capped at **0.2 × pitch, clamped in the renderer rather than trusted from the
+style**, so no style can define away the guarantee. Two parallel walls sit one pitch apart and each
+may move that far toward the other, so the narrowest a corridor becomes is `0.6 × pitch` minus the
+stroke — 6.2 mm of clear space at crayon size. Guaranteed by construction; the clamp is what the
+test checks.
+
+One consequence worth noting: the entrance and exit are midpoints of boundary faces, so they have
+to be computed from the *displaced* vertices. Taking the fixed midpoint leaves the solution line
+detached from its own gap in the wall.
+
+**Cost.** Rounding roughly doubles the path data and jitter adds a little more: a fine-pen maze goes
+from 62 kB (Classic) to 144 kB (Doodle), rendering in 8 ms. Inline in the DOM that is not a problem,
+and it stays well inside a frame.
+
+### Still to come
+
+- **Sketch** — each polyline drawn twice with small independent perturbations and slight end
+  overshoot. Hand-drawn without a dependency, ~40 lines. Costs more ink.
+- **Cave** — render the *passages* instead of the walls. Stroke the passage graph at width
+  `pitch − gap` in black with round caps and joins, then stroke the same path at
+  `pitch − gap − 2·strokeWidth` in white on top. Outlined organic tunnels, no boolean geometry, two
+  paths total.
 
 ## 6. Shape
 
@@ -318,6 +365,9 @@ Worth stating plainly, because it constrains the design: tapping print hands con
 - **Difficulty calibration**: generated mazes at level *n* fall in the expected metric band across a large sample.
 - **Print geometry**: rendered bounding box fits the printable area for every shape and grid.
 - **Golden files** on a fixed seed set.
+- **Architectural boundaries**: `core/` imports nothing outside itself and never names a DOM global.
+  The rule is easy to state and easy to erode one convenient import at a time, so it is checked
+  rather than remembered — it caught a mistake during the line-style work.
 
 Vitest, running against `core/` in Node with no browser needed.
 
