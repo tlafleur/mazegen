@@ -11,13 +11,12 @@ Live at **https://tlafleur.github.io/mazegen/** — installable, and works offli
 
 - Square grids on US Letter and A4, at four cell sizes named after what you would draw with
 - Five difficulty levels, calibrated by measurement rather than assumption
-- Six shapes: page, rounded, oval, circle, heart, star
+- Ten shapes: page, rounded, oval, circle, heart, star, rocket, fish, cupcake, dinosaur
 - Four line styles: Classic, Soft, Doodle, Wonky
+- A mouse at the entrance and cheese at the exit, so the maze says what it is for without words
 - Picture-led preset cards, a filmstrip of recent mazes, and a grown-up area for the rest
 - Optional answer overlay and a 100 mm calibration ruler
-
-Still to come in phase 1: object shapes (rocket, dinosaur, fish, cupcake) and illustrated start and
-end markers.
+- **Prints as a PDF**, written directly, at exactly 612 × 792 pt for Letter
 
 ## Printing, and what is known about it
 
@@ -26,11 +25,13 @@ Scaling 100%, the 100 mm reference line measures about 93 mm. "100%" there means
 no scaling; Safari still fits the sheet into the printer's printable area.
 
 **A PDF prints at 1:1.** The same sheet as a PDF, printed from the iPad through the share sheet,
-comes out the right size — so the fault is Safari's web print, not the print system. The next thing
-being built is a PDF writer that emits the page directly, which routes around the component doing
-the scaling.
+comes out the right size — so the fault is Safari's web print, not the print system.
 
-Until then, printed cells are about 7% smaller than the label says.
+**So the app makes the PDF itself.** Print hands over a PDF rather than printing the web page: it
+opens in a tab, where the system's own print button is one tap away. A PDF states its page size
+inside the file, in the MediaBox, and nothing downstream reinterprets it. Measured on the output,
+the 100 mm reference line is 100.00001 mm and a Letter page is exactly 612 × 792 pt. Browser
+printing is still there under Grown-up settings, labelled with what it costs.
 
 The ruler exists for exactly this. Turn it on under Grown-up settings, print a sheet, and measure
 the line: any difference is scaling applied between the screen and the paper. Two earlier prints
@@ -44,7 +45,7 @@ and A4, so the other one gets scaled down to fit, which shrinks the cells with i
 ```sh
 npm install
 npm run dev      # http://localhost:5173
-npm test         # 169 tests, no browser needed
+npm test         # 202 tests, no browser needed
 npm run build    # includes a check that the offline build is intact
 ```
 
@@ -60,7 +61,10 @@ src/
   render/
     page.ts      paper sizes, cell sizes, how many cells fit on a sheet
     chain.ts     wall segments into maximal polylines
-    svg.ts       SVG at exact page dimensions
+    sheet.ts     the page as strokes and labels, in millimetres — built once
+    path.ts      drawing commands neither output format owns
+    svg.ts       a sheet as SVG, at exact page dimensions
+    pdf.ts       a sheet as PDF, written directly; no library
   App.tsx        controls and preview
 ```
 

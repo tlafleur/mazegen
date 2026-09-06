@@ -371,3 +371,17 @@ body {
     box-shadow: none;
   }
 }
+
+/* A grown-up escape hatch: available, but not competing with the big buttons. */
+.grown-up .plain {
+  margin-top: 12px;
+  padding: 10px 14px;
+  font: inherit;
+  font-size: 14px;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: var(--sunken);
+  color: var(--ink);
+  cursor: pointer;
+  touch-action: manipulation;
+}
