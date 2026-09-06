@@ -19,6 +19,25 @@
     <meta name="apple-mobile-web-app-title" content="mazegen" />
     <link rel="apple-touch-icon" href="./apple-touch-icon.png" />
     <link rel="icon" href="./icon.svg" type="image/svg+xml" />
+    <script>
+      /*
+        First script on the page, so nothing can fail before it is listening.
+        Collects whatever goes wrong for the failure page to report; without
+        this, a bundle that never parses leaves no trace on screen and the
+        person looking at it has nothing to send back.
+      */
+      window.__mazegenErrors = []
+      window.addEventListener('error', function (e) {
+        if (e && e.target && e.target.src) {
+          window.__mazegenErrors.push('could not load ' + e.target.src)
+        } else if (e && e.message) {
+          window.__mazegenErrors.push(e.message + (e.filename ? ' (' + e.filename + ':' + e.lineno + ')' : ''))
+        }
+      }, true)
+      window.addEventListener('unhandledrejection', function (e) {
+        window.__mazegenErrors.push('unhandled rejection: ' + (e && e.reason ? e.reason : 'unknown'))
+      })
+    </script>
     <style>
       .fatal {
         max-width: 34rem;
@@ -35,6 +54,19 @@
         border-radius: 8px;
         font-size: 13px;
       }
+      .fatal button {
+        min-height: 44px;
+        padding: 0 1rem;
+        font: inherit;
+        font-weight: 600;
+        color: #fff;
+        background: #1d4ed8;
+        border: 0;
+        border-radius: 10px;
+        cursor: pointer;
+      }
+      .fatal [hidden] { display: none; }
+      .fatal #diag { font-size: 11px; word-break: break-all; }
       .fatal kbd {
         background: #f2f3f5;
         border: 1px solid #d6d9de;
@@ -54,11 +86,142 @@
           older version.
         </p>
         <p>
-          A reload that ignores the cache normally fixes it: hold Shift and press reload, or
-          press <kbd>&#8984;</kbd> <kbd>Shift</kbd> <kbd>R</kbd>.
+          A reload that ignores the cache sometimes fixes it: hold Shift and press reload, or
+          press <kbd>&#8984;</kbd> <kbd>Shift</kbd> <kbd>R</kbd>. If not, the button below
+          clears everything this app has stored and starts over.
         </p>
+        <button type="button" id="repair">Reset and try again</button>
+        <p id="repair-status" hidden></p>
+        <p id="diag-intro" hidden>If that does not help, this is what went wrong:</p>
+        <pre id="diag" hidden></pre>
       </div>
     </div>
+    <script>
+      /*
+        Deliberately old-fashioned JavaScript, and deliberately inline.
+        This is the recovery path of last resort: it has to run when the
+        bundle is exactly what failed to load, and in whatever browser the
+        person is holding. No arrow functions, no optional chaining, no
+        modules — nothing that could itself be the thing that fails.
+
+        Clearing the browser's cache does not remove a service worker or its
+        stored responses. On Safari that takes Manage Website Data, which is
+        several menus deep and not somewhere a parent should have to go to
+        un-stick a maze. This button does the same job in one tap.
+      */
+      (function () {
+        /*
+          If the app is still not on screen a moment from now, say what is
+          wrong rather than only that something is. The checks below are the
+          ones that distinguish the possibilities: a bundle that 404s, a bundle
+          that loads but will not parse, and a service worker serving something
+          it should not.
+        */
+        setTimeout(function () {
+          if (!document.getElementById('repair')) return // the app started
+
+          var lines = []
+          var errors = window.__mazegenErrors || []
+          for (var i = 0; i < errors.length; i++) lines.push('error: ' + errors[i])
+
+          var tag = document.querySelector('script[src*="assets/"]')
+          var bundle = tag ? tag.src : '(no bundle tag found)'
+          lines.push('bundle: ' + bundle)
+
+          var worker = 'none'
+          if (navigator.serviceWorker && navigator.serviceWorker.controller) {
+            worker = navigator.serviceWorker.controller.scriptURL
+          }
+          lines.push('serving worker: ' + worker)
+          lines.push('agent: ' + navigator.userAgent)
+
+          var show = function () {
+            var pre = document.getElementById('diag')
+            var intro = document.getElementById('diag-intro')
+            if (!pre || !intro) return
+            pre.textContent = lines.join('\n')
+            pre.hidden = false
+            intro.hidden = false
+          }
+
+          var pending = 2
+          var done = function () {
+            pending--
+            if (pending === 0) show()
+          }
+
+          // Is the bundle actually reachable, and what comes back?
+          if (tag && window.fetch) {
+            fetch(tag.src, { cache: 'no-store' })
+              .then(function (r) {
+                lines.push('bundle fetch: HTTP ' + r.status + ' ' + (r.headers.get('content-type') || ''))
+                return r.text()
+              })
+              .then(function (body) {
+                lines.push('bundle bytes: ' + body.length)
+              })
+              .catch(function (err) {
+                lines.push('bundle fetch failed: ' + err)
+              })
+              .then(done, done)
+          } else {
+            done()
+          }
+
+          if (window.caches && window.caches.keys) {
+            window.caches
+              .keys()
+              .then(function (keys) {
+                lines.push('caches: ' + (keys.length ? keys.join(', ') : 'none'))
+              })
+              .catch(function () {})
+              .then(done, done)
+          } else {
+            done()
+          }
+        }, 1500)
+
+        var button = document.getElementById('repair')
+        if (!button) return
+        button.addEventListener('click', function () {
+          var status = document.getElementById('repair-status')
+          if (status) {
+            status.hidden = false
+            status.textContent = 'Clearing\u2026'
+          }
+          var jobs = []
+          if (navigator.serviceWorker && navigator.serviceWorker.getRegistrations) {
+            jobs.push(
+              navigator.serviceWorker.getRegistrations().then(function (regs) {
+                return Promise.all(
+                  regs.map(function (reg) {
+                    return reg.unregister()
+                  })
+                )
+              })
+            )
+          }
+          if (window.caches && window.caches.keys) {
+            jobs.push(
+              window.caches.keys().then(function (keys) {
+                return Promise.all(
+                  keys.map(function (key) {
+                    return window.caches.delete(key)
+                  })
+                )
+              })
+            )
+          }
+          Promise.all(jobs)
+            .catch(function () {
+              /* Reload regardless: a partial clear is still worth retrying. */
+            })
+            .then(function () {
+              window.location.reload()
+            })
+        })
+      })()
+    </script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
