@@ -357,6 +357,40 @@ That places the fault precisely: **Safari's web print shrinks; the print system 
 PDF writer is a fix rather than a hope — it routes around the one component doing the scaling,
 and the assumption the phase-2 ordering rests on has been measured rather than assumed.
 
+### Built: the writer, and what measuring it found
+
+About 180 lines in `src/render/pdf.ts`, no dependency, ~1.5 kB gzipped in the bundle — against
+~350 kB for jsPDF. It takes an array of sheets, so the phase-3 booklet needs no second writer.
+
+The page is described once, in `src/render/sheet.ts`, as millimetres from the top-left corner:
+strokes as drawing commands, plus labels. SVG and PDF each only decide how to spell those commands
+(`src/render/path.ts`). Building the geometry twice is the fastest way to have a printed sheet
+quietly disagree with the preview it came from, so neither backend owns it.
+
+Three things the writing turned up:
+
+**Two decimal places is not enough for the page transform.** The whole content stream is written in
+millimetres and placed by one matrix that scales by 72/25.4 and flips the y axis. Rounded to two
+decimals that factor is 2.83 — 0.16% small. A 100 mm line would print at 99.84 mm and the bottom of
+a Letter page would land 1.3 pt inside its own MediaBox. Since 1:1 is the entire point, the matrix
+carries six decimals. Measured on the output with PyMuPDF: the reference line is **100.00001 mm**
+and the MediaBox is exactly 612 × 792 pt.
+
+**The markers were being printed into the strip printers cannot mark.** The maze fills its 12.7 mm
+margin, so a drawing placed outside the outline is always in that margin — the mouse was landing
+2.2 mm from the paper edge, inside the hardware margin of essentially every printer. `placeMarker`
+now treats the requested 10 mm as a maximum: it shrinks to the room between the opening and a 5 mm
+safe inset, slides sideways rather than falling off at a corner, and is left out below 5 mm, where
+it stops reading as a mouse.
+
+**A marker's stroke has to scale with it.** Held at wall weight, the cheese wedge closed into a
+solid black triangle as soon as it shrank. The wedge also gained a blunt tip: a true triangle
+narrows to nothing, and its last millimetre fills in wherever two stroke widths meet.
+
+The app's Print button now hands over a PDF — opened in a tab, where the system's own print button
+is one tap away, falling back to a download if a tab is refused. Browser printing stays available
+under the grown-up settings, labelled with what it costs.
+
 Also needed: a solution toggle (no answer / answer overlaid / answer on page 2).
 
 ## 8. UI, with the child as the operator
@@ -461,11 +495,10 @@ now, which fixes the solution's direction as well as the drawings.
 
 **Phase 2 — reordered by measurement.**
 
-1. **The PDF writer, first.** Safari shrinks a printed page to about 93% while reporting 100% (§7).
-   Nothing else is worth building while the output is the wrong size. Emit the PDF directly: the
-   drawing primitives are lines, cubic Béziers, one stroke width and black, so a content stream
-   needs `w`, `J`, `j`, `m`, `l`, `c`, `S` and a minimal object table — roughly 200–250 lines with
-   no dependencies. Measure the result with the same ruler before believing it.
+1. ~~**The PDF writer, first.**~~ **Done.** Safari shrinks a printed page to about 93% while
+   reporting 100% (§7); nothing else was worth building while the output was the wrong size. The
+   writer emits the content stream directly and the result measures 100.00001 mm on a 100 mm line.
+   What it cost, and the two placement bugs it exposed, are in §7.
 2. **On-screen solving.** Printing needs an adult *and* a printer, so most of the time what a child
    does with an iPad is play. Track which cell the finger is in and permit only moves to adjacent
    cells sharing a passage; the cell is the target, which at crayon size is 12 mm.

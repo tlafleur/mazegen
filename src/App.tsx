@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { generateMaze, shapesFor } from './generate'
-import { renderSvg } from './render/svg'
+import { renderPdf, renderSvg } from './render/svg'
 import { shapeIcon, styleThumbnail } from './render/thumbnail'
 import { STYLES } from './render/style'
 import { RECIPES, type Level } from './core/difficulty'
@@ -109,20 +109,46 @@ export default function App() {
 
   const styleSeed = hashSeed(seed)
   const base = { paper, stroke: pen.stroke, style, styleSeed, markers }
+  const caption =
+    `100 mm · ${paper.label} · ${pen.label} · ${shape.label} · ` + `${style.label} · seed ${seed}`
 
   const svg = useMemo(
-    () =>
-      renderSvg(maze.grid, maze.maze, maze.solution, {
-        ...base,
-        showSolution,
-        calibration,
-        caption:
-          `100 mm · ${paper.label} · ${pen.label} · ${shape.label} · ` +
-          `${style.label} · seed ${seed}`,
-      }),
+    () => renderSvg(maze.grid, maze.maze, maze.solution, { ...base, showSolution, calibration, caption }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [maze, paper, pen, style, styleSeed, seed, showSolution, calibration, markers],
   )
+
+  /**
+   * Hand the sheet over as a PDF.
+   *
+   * Not the browser's own print: Safari shrinks a web page by about 7% while
+   * reporting 100%, where a PDF carries its page size inside the file and comes
+   * out at the size it claims. Measured; see docs/DESIGN.md §7.
+   */
+  const savePdf = (): void => {
+    const bytes = renderPdf(maze.grid, maze.maze, maze.solution, {
+      ...base,
+      showSolution,
+      calibration,
+      caption,
+    })
+    const url = URL.createObjectURL(new Blob([bytes], { type: 'application/pdf' }))
+    const name = `maze-${shape.id}-${seed}.pdf`
+
+    // A tab shows the PDF with the system's own print button one tap away,
+    // which is fewer steps than saving it and finding it again. If opening a
+    // tab is refused — a blocker, or a standalone window with no tabs — fall
+    // back to handing over the file.
+    if (window.open(url, '_blank') === null) {
+      const a = document.createElement('a')
+      a.href = url
+      a.download = name
+      a.click()
+    }
+    // Long enough for the viewer to have loaded it; after that the tab holds
+    // its own copy and the URL is only taking up memory.
+    window.setTimeout(() => URL.revokeObjectURL(url), 60_000)
+  }
 
   // A second render without the answer or the ruler, so the filmstrip shows the
   // maze rather than whatever happened to be toggled when it was made.
@@ -314,6 +340,14 @@ export default function App() {
             here and the paper. Pick the paper your printer actually holds — the other size gets
             scaled down to fit, which shrinks the cells with it.
           </p>
+
+          <button type="button" className="plain" onClick={() => window.print()}>
+            Print from the browser instead
+          </button>
+          <p className="note">
+            Quicker by a tap, but Safari shrinks the page about 7% on the way to the printer while
+            still reporting 100%. Print the PDF if the size has to be right.
+          </p>
         </details>
         </div>
 
@@ -321,7 +355,7 @@ export default function App() {
           <button type="button" className="big" onClick={() => setSeed(newSeed())}>
             New maze
           </button>
-          <button type="button" className="big primary" onClick={() => window.print()}>
+          <button type="button" className="big primary" onClick={savePdf}>
             Print
           </button>
         </div>

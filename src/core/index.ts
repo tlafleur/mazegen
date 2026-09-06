@@ -14,10 +14,14 @@ export {
 } from './grid/planar'
 export {
   circleMask,
+  cupcakeMask,
+  dinosaurMask,
   ellipseMask,
+  fishMask,
   heartMask,
   polygonMask,
   rectangleMask,
+  rocketMask,
   roundedRectMask,
   shapeLibrary,
   starMask,
