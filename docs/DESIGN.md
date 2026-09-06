@@ -339,23 +339,52 @@ Also needed: a solution toggle (no answer / answer overlaid / answer on page 2).
 
 Principles, each with a concrete mechanism:
 
-1. **Never a blank state.** The app opens with a finished, printable maze already on screen. No configuration form stands between the user and a result.
-2. **Pictures, not words, and no numbers at all.** Preset cards show a real thumbnail generated at those settings. Difficulty is shown as one to five stars or as character sizes, never as a number. Cell size is shown as a picture of a crayon, marker, pencil, or pen. A pre-reader should be able to operate the entire primary flow.
-3. **Stepped chips, not sliders.** Sliders are precision instruments and children are not precise. Every control is 3–5 large discrete options at a minimum of 60 pt, well above the 44 pt HIG floor, with generous spacing.
-4. **Nothing is destructive.** A large "New maze" button reshuffles the seed, and a filmstrip of the last ~10 mazes lets a child recover one they liked. The main way to lose in a generator app is losing the good result; this removes it.
-5. **Live preview.** Settings apply immediately. Generation is sub-millisecond at these sizes; move to a Web Worker only if measurement shows a dropped frame.
-6. **No typing** anywhere in the primary flow. Keyboards cover half the screen and children type slowly. The optional name-maze feature is the one exception, and it belongs in the grown-up area.
-7. **Both orientations.** Landscape puts the preview beside the controls; portrait puts it above them.
-8. **Touch-resistant preview.** The preview ignores drags outside of play mode, so a hand resting on the screen does nothing.
-9. **Standalone PWA display mode.** `display: standalone` in the manifest removes Safari's chrome, so there is no address bar for a child to tap out of the app.
-10. **A grown-up area, unobtrusive rather than locked.** Paper size, margins, printer settings, and name mazes live behind a small, plainly-labelled entry point. Not a password gate — just somewhere a child will not wander by accident.
+1. **Never a blank state.** The app opens with a finished, printable maze already on screen.
+2. **Pictures, not words, and no numbers.** Preset cards show a real maze generated at those
+   settings; difficulty is filled dots; shapes and line styles are drawn, not named. A pre-reader
+   can operate the whole primary flow. The words on the cards are for whoever is helping.
+3. **One tap sets difficulty and cell size together.** They are separate axes in the engine, and
+   deliberately so, but a child should not have to reason about two things to get a maze. The
+   grown-up area exposes them apart.
+4. **Stepped chips, not sliders**, at a 60 px minimum — above the 44 pt HIG floor.
+5. **Nothing is destructive.** A filmstrip keeps the last six mazes, and tapping one restores it
+   whole. It never reorders: a maze a child is looking for should stay where they last saw it.
+6. **No typing** anywhere in the primary flow.
+7. **Both orientations.** Landscape puts the controls beside the maze; portrait puts them below and
+   spreads the cards across the width.
+8. **The preview ignores pointers**, so a hand resting on it does nothing.
+9. **Standalone display**, so there is no address bar to tap out of.
+10. **A grown-up area** — paper, individual difficulty and cell size, answer, ruler, metrics —
+    behind a plainly labelled disclosure. Not a lock; an adult should never have to hunt for it.
 
-### The print sheet is not child-operable
+### Three things the build corrected
 
-Worth stating plainly, because it constrains the design: tapping print hands control to the iOS system print sheet, which is dense, text-heavy, and requires choosing a printer. No amount of work on our side changes that. So the realistic division of labour is that the child designs and an adult completes the print. Two implications:
+**A preset card cannot show a whole page.** Shrunk to thumbnail size, every cell size becomes the
+same grey texture, so "Big kid", "Tricky" and "Fiendish" were indistinguishable — which defeats the
+one job a picture-led card has. The cards show a *cropped window* onto the middle of the sheet
+instead, at a scale where individual cells resolve, so chunky and dense differ visibly rather than
+by shade.
 
-- The print button should produce a queued, obviously-finished result the adult can act on later, not require the adult to be standing there at the moment of choice. A "print queue" of chosen mazes the adult flushes in one go fits the actual household situation better than one-tap-print-now, and it feeds directly into the booklet export in §10.
-- Because printing needs an adult and a printer, **on-screen solving is what the child will actually do most of the time.** That moves it from a nice-to-have to a phase 2 feature. Mechanically it is easy and naturally forgiving: track which cell the finger is in and only permit movement to adjacent cells sharing a passage, snapping the drawn line to cell centres with rounded joins. The cell itself is the tap target, so at crayon size that is a 12 mm target — larger than any button in the app.
+**The primary actions cannot be sticky over the scroll area.** Pinning New maze and Print with
+`position: sticky` hid whatever scrolled under them — the line-style picker sat permanently behind
+the Print button. The panel is a scrolling body with a fixed footer instead.
+
+**iOS ignores the manifest for home-screen behaviour.** `display: standalone` alone still opens in
+Safari with an address bar. The `apple-mobile-web-app-*` meta tags are what actually launch it
+chrome-free, and the touch icon has to be a PNG — iOS will not take the SVG.
+
+### Cost
+
+The preset cards, the filmstrip and the preview together put roughly 700 kB of SVG in the DOM at
+the default settings. Comfortable, but it is the reason the cards are cropped and the filmstrip is
+capped at six.
+
+### Still to come
+
+Offline. The manifest gets the app installed and full-screen; a service worker is what makes it
+work with no network. Worth doing with `vite-plugin-pwa` rather than by hand — a hand-rolled worker
+that gets cache versioning wrong strands users on a stale build, which is a worse failure than
+having no offline support yet.
 
 ## 9. Testing
 

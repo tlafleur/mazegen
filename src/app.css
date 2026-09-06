@@ -4,7 +4,9 @@
   --ink: #16181d;
   --muted: #6b7280;
   --line: #d6d9de;
+  --sunken: #f2f3f5;
   --accent: #1d4ed8;
+  --accent-soft: #e8efff;
   color-scheme: light;
 }
 
@@ -26,22 +28,24 @@ body {
   -webkit-text-size-adjust: 100%;
 }
 
-/* Portrait: sheet above, controls below. Landscape: controls beside. */
+/* Portrait stacks; landscape puts the controls alongside. */
 .app {
   height: 100%;
   display: grid;
-  grid-template-rows: 1fr auto;
-  min-height: 0;
+  grid-template-areas: "stage" "strip" "panel";
+  grid-template-rows: minmax(0, 1fr) auto auto;
 }
 
 @media (min-width: 900px) {
   .app {
-    grid-template-rows: none;
-    grid-template-columns: 1fr 360px;
+    grid-template-areas: "stage panel" "strip panel";
+    grid-template-columns: minmax(0, 1fr) 380px;
+    grid-template-rows: minmax(0, 1fr) auto;
   }
 }
 
 .stage {
+  grid-area: stage;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -52,15 +56,11 @@ body {
 }
 
 /* `display: contents` makes the SVG itself the flex item, so its max-height
-   percentage resolves against the stage. Wrapping it in a sized div instead
-   leaves the percentage resolving against an auto height, and the sheet
-   overflows rather than fitting. */
+   percentage resolves against the stage rather than an auto-height wrapper. */
 .sheet {
   display: contents;
 }
 
-/* The SVG carries its own intrinsic size in millimetres, so max-* plus auto
-   scales it down to fit while preserving the sheet's proportions. */
 .stage svg {
   display: block;
   width: auto;
@@ -68,63 +68,176 @@ body {
   max-width: 100%;
   max-height: 100%;
   box-shadow: 0 2px 14px rgb(0 0 0 / 0.18);
+  /* A hand resting on the preview should do nothing at all. */
+  pointer-events: none;
 }
 
-.controls {
+/* --- recent mazes --- */
+
+.strip {
+  grid-area: strip;
+  display: flex;
+  gap: 8px;
+  padding: 0 16px 12px;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+}
+
+.strip:empty {
+  display: none;
+}
+
+.plate {
+  flex: 0 0 auto;
+  width: 72px;
+  padding: 3px;
+  background: #fff;
+  border: 2px solid transparent;
+  border-radius: 10px;
+  cursor: pointer;
+  box-shadow: 0 1px 4px rgb(0 0 0 / 0.14);
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+
+.plate.on {
+  border-color: var(--accent);
+}
+
+.plate-art svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+/* --- controls --- */
+
+/* A scrolling body with a fixed footer. Overlaying the buttons on the scroll
+   area instead hides whatever sits under them, which is how the line styles
+   ended up permanently behind the Print button. */
+.panel {
+  grid-area: panel;
   background: var(--panel);
   border-top: 1px solid var(--line);
-  padding: 16px;
-  padding-bottom: max(16px, env(safe-area-inset-bottom));
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) auto;
+  min-height: 0;
+  /* Portrait: keep the controls from crowding out the maze itself. */
+  max-height: 52dvh;
+}
+
+.panel-body {
   overflow: auto;
   display: flex;
   flex-direction: column;
   gap: 14px;
+  padding: 14px 16px;
 }
 
 @media (min-width: 900px) {
-  .controls {
+  .panel {
     border-top: 0;
     border-left: 1px solid var(--line);
+    max-height: none;
   }
 }
 
-h1 {
-  margin: 0;
-  font-size: 20px;
-  font-weight: 650;
+/* One column beside the maze in landscape, several across the width in
+   portrait. Five stacked rows on a full-width panel is mostly empty space. */
+.cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+  gap: 8px;
 }
 
-.phase {
-  color: var(--muted);
-  font-weight: 400;
-  font-size: 14px;
+/* Art on the left, name and difficulty on the right. A child reads the picture;
+   the words are for whoever is helping. */
+.card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 84px;
+  padding: 8px 12px 8px 8px;
+  font: inherit;
+  text-align: left;
+  color: var(--ink);
+  background: var(--sunken);
+  border: 2px solid transparent;
+  border-radius: 16px;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+
+.card.on {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+}
+
+.card-art {
+  flex: 0 0 auto;
+  width: 56px;
+  line-height: 0;
+}
+
+.card-art svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: 4px;
+  background: #fff;
+}
+
+.card-name {
+  flex: 1;
+  font-weight: 600;
+}
+
+.dots {
+  display: flex;
+  gap: 4px;
+}
+
+.dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: #cdd2da;
+}
+
+.dot.on {
+  background: var(--accent);
 }
 
 .group-label {
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 600;
   color: var(--muted);
   text-transform: uppercase;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.05em;
   margin-bottom: 6px;
 }
 
-/* Two across, so four options read as a block rather than as three plus a
-   stray. */
+/* An explicit column count per group, set inline. Letting chips wrap leaves a
+   lone orphan on the second row whenever the count does not divide evenly. */
 .chips {
   display: grid;
-  grid-template-columns: repeat(2, 1fr);
   gap: 8px;
 }
 
 /* Minimum 60px targets, per docs/DESIGN.md §8 — above the 44pt HIG floor. */
 .chip {
   min-height: 60px;
-  padding: 10px 12px;
+  min-width: 60px;
+  flex: 1 1 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px 12px;
   font: inherit;
   font-weight: 550;
   color: var(--ink);
-  background: #f3f4f6;
+  background: var(--sunken);
   border: 2px solid transparent;
   border-radius: 14px;
   cursor: pointer;
@@ -133,23 +246,31 @@ h1 {
 }
 
 .chip.on {
-  background: #e8efff;
+  background: var(--accent-soft);
   border-color: var(--accent);
   color: var(--accent);
 }
 
-.meta {
-  font-size: 13px;
-  color: var(--muted);
+.icon {
+  display: block;
+  width: 34px;
+  height: 34px;
+  line-height: 0;
 }
 
-.meta code {
-  font-size: 12px;
+.icon svg {
+  display: block;
+  width: 100%;
+  height: 100%;
 }
 
+/* The panel's footer: the two things a child most needs are always on screen,
+   however many controls sit above them. */
 .actions {
   display: flex;
   gap: 10px;
+  padding: 12px 16px max(16px, env(safe-area-inset-bottom));
+  border-top: 1px solid var(--line);
 }
 
 .big {
@@ -160,7 +281,7 @@ h1 {
   font-weight: 650;
   border-radius: 16px;
   border: 2px solid var(--line);
-  background: #f3f4f6;
+  background: var(--sunken);
   color: var(--ink);
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
@@ -171,6 +292,45 @@ h1 {
   background: var(--accent);
   border-color: var(--accent);
   color: #fff;
+}
+
+/* --- grown-up area --- */
+
+/* Plainly labelled and easy to reach, but not somewhere a child lands by
+   accident. Not a lock: an adult should never have to hunt for it. */
+.grown-up {
+  border-top: 1px solid var(--line);
+  padding-top: 10px;
+}
+
+.grown-up > summary {
+  min-height: 48px;
+  display: flex;
+  align-items: center;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--muted);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.grown-up[open] > summary {
+  margin-bottom: 12px;
+}
+
+.grown-up .group + .group,
+.grown-up .meta,
+.grown-up .note {
+  margin-top: 12px;
+}
+
+.meta {
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.meta code {
+  font-size: 12px;
 }
 
 .note {
@@ -193,7 +353,8 @@ h1 {
     height: auto;
   }
 
-  .controls {
+  .panel,
+  .strip {
     display: none !important;
   }
 

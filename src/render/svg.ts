@@ -16,6 +16,20 @@ export interface RenderOptions {
   readonly calibration?: boolean
   /** Caption text beside the reference line. */
   readonly caption?: string
+  /**
+   * Show only part of the sheet, in millimetres.
+   *
+   * A whole page shrunk to thumbnail size is grey texture — every cell size
+   * looks the same, which is exactly what a preset card must not do. Cropping
+   * instead keeps cells at a legible scale, so chunky and dense are visibly
+   * different rather than merely differently grey.
+   */
+  readonly crop?: {
+    readonly x: number
+    readonly y: number
+    readonly width: number
+    readonly height: number
+  }
 }
 
 /** Trim float noise; keeps the document small and diffable. */
@@ -126,9 +140,12 @@ export function renderSvg(
       ` font-size="3" fill="#000">${esc(opts.caption ?? '100 mm')}</text>`
   }
 
+  const view = opts.crop ?? { x: 0, y: 0, width: paper.width, height: paper.height }
+
   return (
-    `<svg xmlns="http://www.w3.org/2000/svg" width="${f(paper.width)}mm"` +
-    ` height="${f(paper.height)}mm" viewBox="0 0 ${f(paper.width)} ${f(paper.height)}">` +
+    `<svg xmlns="http://www.w3.org/2000/svg" width="${f(view.width)}mm"` +
+    ` height="${f(view.height)}mm"` +
+    ` viewBox="${f(view.x)} ${f(view.y)} ${f(view.width)} ${f(view.height)}">` +
     `<rect width="${f(paper.width)}" height="${f(paper.height)}" fill="#fff"/>` +
     `<path d="${walls}" fill="none" stroke="#000" stroke-width="${f(opts.stroke)}"` +
     ` stroke-linecap="round" stroke-linejoin="round"/>` +
