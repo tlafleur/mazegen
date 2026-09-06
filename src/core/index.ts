@@ -35,6 +35,7 @@ export { carveSidewinder } from './carve/sidewinder'
 export { carveWilson } from './carve/wilson'
 
 export { braid, capDeadEndRun } from './braid'
+export { edgeBetween, follow, startTrail, step, type Trail } from './trail'
 export { reachableCount, solve } from './analyze'
 export {
   deadEndRuns,

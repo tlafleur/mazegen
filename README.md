@@ -17,6 +17,8 @@ Live at **https://tlafleur.github.io/mazegen/** — installable, and works offli
 - Picture-led preset cards, a filmstrip of recent mazes, and a grown-up area for the rest
 - Optional answer overlay and a 100 mm calibration ruler
 - **Prints as a PDF**, written directly, at exactly 612 × 792 pt for Letter
+- **Solve it on screen**: press Play and trace the route with a finger; walls stop the line rather
+  than rejecting the move, so there is nothing to undo and no way to get stuck
 
 ## Printing, and what is known about it
 
@@ -45,7 +47,7 @@ and A4, so the other one gets scaled down to fit, which shrinks the cells with i
 ```sh
 npm install
 npm run dev      # http://localhost:5173
-npm test         # 202 tests, no browser needed
+npm test         # 221 tests, no browser needed
 npm run build    # includes a check that the offline build is intact
 ```
 
@@ -58,6 +60,7 @@ src/
     grid/        cell topology and geometry
     carve/       carving algorithms; operate on an abstract graph, no geometry
     analyze.ts   solver
+    trail.ts     the rules for tracing a route by finger
   render/
     page.ts      paper sizes, cell sizes, how many cells fit on a sheet
     chain.ts     wall segments into maximal polylines

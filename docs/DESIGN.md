@@ -431,6 +431,37 @@ the Print button. The panel is a scrolling body with a fixed footer instead.
 Safari with an address bar. The `apple-mobile-web-app-*` meta tags are what actually launch it
 chrome-free, and the touch icon has to be a PNG — iOS will not take the SVG.
 
+### Solving on screen
+
+A child has an iPad far more often than a printer and an adult, so the sheet is also the game.
+Press Play, and a finger traces the route from the mouse to the cheese.
+
+The rules are in `src/core/trail.ts`, with no notion of pointers or pixels, which is what makes
+them testable without a browser:
+
+- A trail is only ever a **legal walk from the entrance**. `step` is the only way to extend one,
+  and it refuses anything that is not an adjacent cell with an open wall between.
+- An illegal move is **ignored, not rejected**. Drag across a wall and the line simply stops —
+  nothing to dismiss, nothing to undo. This is the concrete form of "hard to get stuck": there is
+  no state a child can reach that they cannot back out of.
+- Dragging back over a cell already in the trail **retraces to it**. One rule covers backing out of
+  a dead end a step at a time and a finger swept back across half the maze, and it is why the trail
+  can never contain a loop.
+- A drag is **sampled along its length**, not taken at its endpoint. Pointer events arrive far
+  apart when a finger moves quickly; at fine-pen density a single event can span several cells, and
+  without sampling a fast swipe would jump straight through a wall.
+
+The trail is a second SVG laid exactly over the sheet. That needed the preview to have a real box
+rather than `display: contents`, so the sheet is now sized from the stage's own dimensions with a
+container query — `min(100cqw, 100cqh * aspect)` — which pins the two together whichever way round
+the screen is. Playing also hides the controls: at iPad-portrait size that takes the maze from
+about 310 px wide to 760, which is the difference between a 15 px corridor and a 36 px one.
+
+Verified end to end by turning on the drawn answer, reading its path back out of the rendered SVG,
+and driving a pointer along it: the trail follows it to the exit. That one check exercises the
+overlay's coordinates, the page origin, the cell lookup and the rules at once — if any of them
+disagreed with the renderer, the finger would hit a wall that is not there.
+
 ### Cost
 
 The preset cards, the filmstrip and the preview together put roughly 700 kB of SVG in the DOM at
@@ -499,9 +530,8 @@ now, which fixes the solution's direction as well as the drawings.
    reporting 100% (§7); nothing else was worth building while the output was the wrong size. The
    writer emits the content stream directly and the result measures 100.00001 mm on a 100 mm line.
    What it cost, and the two placement bugs it exposed, are in §7.
-2. **On-screen solving.** Printing needs an adult *and* a printer, so most of the time what a child
-   does with an iPad is play. Track which cell the finger is in and permit only moves to adjacent
-   cells sharing a passage; the cell is the target, which at crayon size is 12 mm.
+2. ~~**On-screen solving.**~~ **Done.** Printing needs an adult *and* a printer, so most of the
+   time what a child does with an iPad is play. See §8 for what the rules turned out to be.
 3. Print queue. Hex and polar grids. Sketch and Cave styles. Letter and name mazes.
 
 **Phase 3**

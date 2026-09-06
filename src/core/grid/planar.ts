@@ -38,6 +38,14 @@ export interface PlanarGrid {
   readonly vertexCount: number
   vertexPos(vertex: number): Point
   cellCenter(cell: CellId): Point
+  /**
+   * The cell containing a point, or -1 for a point outside the shape.
+   *
+   * The inverse of `cellCenter`, and what turns a finger on a screen into a
+   * move: solving on screen is "which cell is this, and is there a passage to
+   * it from the last one".
+   */
+  cellAtPoint(p: Point): CellId
   /** The wall this edge draws when left closed. */
   wallSegment(edge: EdgeId): Segment
   /**

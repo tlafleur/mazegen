@@ -42,6 +42,18 @@ body {
     grid-template-columns: minmax(0, 1fr) 380px;
     grid-template-rows: minmax(0, 1fr) auto;
   }
+
+  .app.playing {
+    grid-template-columns: minmax(0, 1fr) 240px;
+  }
+}
+
+/* Solving needs the sheet as large as the screen allows: a corridor a finger
+   can follow, not a preview. The controls are not being used mid-maze anyway,
+   and they come straight back on Done. */
+.app.playing .panel-body,
+.app.playing .strip {
+  display: none;
 }
 
 .stage {
@@ -52,23 +64,94 @@ body {
   padding: 16px;
   min-height: 0;
   min-width: 0;
-  overflow: auto;
+  overflow: hidden;
+  /* Makes the stage's own box measurable in CSS, which is what lets the sheet
+     below be sized against both of its dimensions at once. */
+  container-type: size;
 }
 
-/* `display: contents` makes the SVG itself the flex item, so its max-height
-   percentage resolves against the stage rather than an auto-height wrapper. */
+/* The sheet needs a real box, not `display: contents`, because the trail is
+   drawn as a second SVG laid exactly over the first. Sizing from the stage's
+   own dimensions rather than from the SVG's intrinsic size keeps the two
+   pinned together: whichever way round the stage is, both are this box. */
 .sheet {
-  display: contents;
+  position: relative;
+  width: min(100cqw, 100cqh * var(--sheet-aspect));
+  aspect-ratio: var(--sheet-ratio);
+  box-shadow: 0 2px 14px rgb(0 0 0 / 0.18);
 }
 
-.stage svg {
+.sheet-art,
+.sheet-art > svg {
   display: block;
-  width: auto;
-  height: auto;
-  max-width: 100%;
-  max-height: 100%;
-  box-shadow: 0 2px 14px rgb(0 0 0 / 0.18);
+  width: 100%;
+  height: 100%;
   /* A hand resting on the preview should do nothing at all. */
+  pointer-events: none;
+}
+
+/* --- solving on screen --- */
+
+.trail {
+  position: absolute;
+  inset: 0;
+  /* The finger draws here rather than scrolling the page — and a drag across
+     the sheet must not leave the page looking like selected text. */
+  touch-action: none;
+  pointer-events: auto;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.trail path {
+  fill: none;
+  stroke: var(--accent);
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  opacity: 0.85;
+}
+
+.trail.done path {
+  stroke: #12894a;
+  opacity: 1;
+}
+
+/* Where to put the finger, until there is a trail to follow. */
+.trail circle {
+  fill: none;
+  stroke: var(--accent);
+  opacity: 0.9;
+  animation: pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  50% {
+    opacity: 0.25;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .trail circle {
+    animation: none;
+  }
+}
+
+.win {
+  user-select: none;
+  -webkit-user-select: none;
+  position: absolute;
+  left: 50%;
+  bottom: 8%;
+  transform: translateX(-50%);
+  padding: 10px 22px;
+  border-radius: 999px;
+  background: #12894a;
+  color: #fff;
+  font-size: 20px;
+  font-weight: 700;
+  white-space: nowrap;
+  box-shadow: 0 4px 16px rgb(0 0 0 / 0.25);
   pointer-events: none;
 }
 
@@ -362,13 +445,28 @@ body {
     display: block;
     padding: 0;
     overflow: visible;
+    container-type: normal;
   }
 
   /* Exact millimetres are set alongside @page in App.tsx. */
-  .stage svg {
+  .sheet {
+    width: auto;
+    aspect-ratio: auto;
+    box-shadow: none;
+  }
+
+  .sheet-art,
+  .sheet-art > svg {
+    width: auto;
+    height: auto;
     max-width: none;
     max-height: none;
-    box-shadow: none;
+  }
+
+  /* An unfinished trail is not part of the sheet. */
+  .trail,
+  .win {
+    display: none !important;
   }
 }
 

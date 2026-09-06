@@ -168,6 +168,15 @@ export class MaskedGrid implements Topology, PlanarGrid {
     return this.base.cellCenter(this.toBase[cell] as CellId)
   }
 
+  cellAtPoint(p: Point): CellId {
+    const col = Math.floor(p.x / this.pitch)
+    const row = Math.floor(p.y / this.pitch)
+    if (col < 0 || row < 0 || col >= this.base.cols || row >= this.base.rows) return -1
+    // Outside the mask reads the same as outside the grid: there is no cell
+    // there, so a finger over it is not a move.
+    return this.fromBase[this.base.cellAt(col, row)] as CellId
+  }
+
   wallSegment(edge: EdgeId): Segment {
     return this.base.wallSegment(this.edgeToBase[edge] as EdgeId)
   }

@@ -23,6 +23,26 @@ export interface SheetOptions {
 }
 
 /**
+ * Where the maze's top-left corner sits on the page, in millimetres.
+ *
+ * Exported because solving on screen needs the same answer in reverse: a
+ * finger's position on the sheet has to become a position in the grid, and it
+ * would be no use if the two disagreed by a millimetre.
+ */
+export function sheetOrigin(
+  paper: Paper,
+  grid: { width: number; height: number },
+  margin: number = DEFAULT_MARGIN,
+): Point {
+  // Centre the maze in the live area: flooring cols and rows to whole cells
+  // leaves up to one cell of slack in each direction.
+  return {
+    x: margin + (paper.width - 2 * margin - grid.width) / 2,
+    y: margin + (paper.height - 2 * margin - grid.height) / 2,
+  }
+}
+
+/**
  * Everything on one page, described once.
  *
  * Both outputs render this same structure. Building the geometry separately for
@@ -40,10 +60,7 @@ export function buildSheet(
   const strokes: SheetStroke[] = []
   const labels: SheetLabel[] = []
 
-  // Centre the maze in the live area: flooring cols and rows to whole cells
-  // leaves up to one cell of slack in each direction.
-  const ox = margin + (paper.width - 2 * margin - grid.width) / 2
-  const oy = margin + (paper.height - 2 * margin - grid.height) / 2
+  const { x: ox, y: oy } = sheetOrigin(paper, grid, margin)
 
   const style = opts.style ?? CLASSIC
   const radius = style.rounding * grid.pitch
