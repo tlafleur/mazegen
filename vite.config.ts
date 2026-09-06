@@ -42,7 +42,10 @@ export default defineConfig({
         globPatterns: ['**/*.{js,css,html,svg,png,ico}'],
         // Without this an old build's caches linger after every deploy.
         cleanupOutdatedCaches: true,
-        navigateFallback: './index.html',
+        // No navigateFallback on purpose. There is no client-side router here,
+        // so a navigation lands on the precached index.html directly. The
+        // fallback would add a relative-path lookup that has to match the
+        // precache manifest exactly — a failure point buying nothing.
       },
     }),
   ],
