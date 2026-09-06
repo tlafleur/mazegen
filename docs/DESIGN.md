@@ -349,9 +349,13 @@ this section named. Nothing else in phase 2 matters while the output is the wron
 named after a drawing tool has to mean something physical, and at 93% a 12 mm crayon corridor prints
 at 11.2 mm.
 
-Still to confirm: whether printing a PDF through the iOS share sheet is accurate at 1:1. That is
-the assumption the whole phase-2 plan rests on, so it gets measured with the same ruler before any
-of it is built.
+### Confirmed: a PDF prints at 1:1
+
+The same sheet as a PDF, printed from the iPad through the share sheet, comes out the right size.
+
+That places the fault precisely: **Safari's web print shrinks; the print system does not.** So the
+PDF writer is a fix rather than a hope — it routes around the one component doing the scaling,
+and the assumption the phase-2 ordering rests on has been measured rather than assumed.
 
 Also needed: a solution toggle (no answer / answer overlaid / answer on page 2).
 

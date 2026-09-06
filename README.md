@@ -23,8 +23,12 @@ end markers.
 
 **Safari shrinks the page.** Printed from an iPad with the print sheet reporting US Letter and
 Scaling 100%, the 100 mm reference line measures about 93 mm. "100%" there means the *user* applied
-no scaling; Safari still fits the sheet into the printer's printable area. The next thing being
-built is a PDF writer that emits the page directly, so the output is the size it claims to be.
+no scaling; Safari still fits the sheet into the printer's printable area.
+
+**A PDF prints at 1:1.** The same sheet as a PDF, printed from the iPad through the share sheet,
+comes out the right size — so the fault is Safari's web print, not the print system. The next thing
+being built is a PDF writer that emits the page directly, which routes around the component doing
+the scaling.
 
 Until then, printed cells are about 7% smaller than the label says.
 
