@@ -331,7 +331,31 @@ Safari on iOS applies its own scaling and margins to printed web content dependi
 
 Mitigation, and the recommended primary output: **generate the PDF ourselves, client-side.** The drawing primitives are only lines, cubic Béziers, a stroke width, and black. A PDF content stream needs `w`, `J`, `j`, `m`, `l`, `c`, `S`, plus a minimal object table — roughly 200–250 lines with no dependencies, and far smaller than jsPDF (~350 KB) or pdf-lib (~1 MB). It gives byte-exact page geometry, and on iPad the resulting file goes to the share sheet, then to Files or directly to AirPrint.
 
-Sequencing: ship browser print first because it is ten lines, and **test it on a real iPad and a real printer in the first week**. This is the highest-risk unknown in the project, so it gets de-risked before any UI work. Add the PDF writer in phase 2 and make it the default once it is proven.
+### Measured: Safari shrinks the page by about 7%
+
+Printed from Safari on an iPad to a Brother HL-L2350DW, with the print sheet reporting **US Letter,
+Portrait, Scaling 100%**, the 100 mm reference line measures **about 93 mm**.
+
+The dialog is not lying so much as answering a different question: "100%" means the *user* applied
+no scaling. Safari still fits the sheet into the printer's printable area rather than onto the
+physical sheet, and a roughly 8 mm unprintable border on a Letter page accounts for the ~0.93 seen.
+
+This is why the sheet carries a ruler instead of trusting the print dialog. Two earlier prints —
+one from a PDF, one from Safari on macOS — both *reported* 100% and were taken as fine; neither was
+measured. The dialog agreeing with you is not evidence.
+
+**Consequence: the hand-rolled PDF writer moves to the front of phase 2**, exactly the contingency
+this section named. Nothing else in phase 2 matters while the output is the wrong size — a cell size
+named after a drawing tool has to mean something physical, and at 93% a 12 mm crayon corridor prints
+at 11.2 mm.
+
+### Confirmed: a PDF prints at 1:1
+
+The same sheet as a PDF, printed from the iPad through the share sheet, comes out the right size.
+
+That places the fault precisely: **Safari's web print shrinks; the print system does not.** So the
+PDF writer is a fix rather than a hope — it routes around the one component doing the scaling,
+and the assumption the phase-2 ordering rests on has been measured rather than assumed.
 
 Also needed: a solution toggle (no answer / answer overlaid / answer on page 2).
 
@@ -415,17 +439,54 @@ Vitest, running against `core/` in Node with no browser needed.
 
 ## 10. Phasing
 
-**Phase 0 — de-risk (days)**
-Square grid, recursive backtracker, solver, plain straight-line SVG, browser print. Print it on a real iPad to a real printer, on both Letter and A4. Nothing else matters until this works. Deliberately style-free: this phase proves the pipeline, not the look.
+**Phase 0 — de-risk. Done.**
+Square grid, recursive backtracker, solver, plain SVG, browser print. Deliberately style-free: it
+proved the pipeline, not the look.
 
-**Phase 1 — v1, Doodle World**
-Difficulty model with verification and calibration. Cell-size setting. Rectangle, circle, heart, star, plus three or four object shapes. Rounded and jitter styles, with Classic available as the degenerate case (no jitter, no rounding). Illustrated start and end markers. Picture-based preset cards, no numbers. Solution toggle. Seeds, regenerate, history filmstrip. Grown-up area. PWA install in standalone mode. Deploy static.
+**Phase 1 — Doodle World. Substantially done.**
+Difficulty model with measured calibration. Cell sizes. Six shapes. Four line styles. Picture-led
+preset cards, drawn shape and style pickers, a filmstrip of recent mazes, a grown-up area. Answer
+toggle. Seeds and regeneration. PWA install and full offline. Deployed.
 
-**Phase 2**
-On-screen solving mode — promoted from phase 3, since it is what the child does when no adult is at the printer. Hand-rolled PDF export as the default output. Print queue. Hex and polar grids. Sketch and Cave styles. More object shapes and letter/name mazes.
+Ten shapes, including rocket, fish, cupcake and dinosaur. A mouse at the entrance and cheese at the
+exit, drawn outside the outline along the direction the opening faces — which is how decoration
+keeps clear of the walls without any collision test.
+
+Two things that only showed up on screen. Both object silhouettes needed correcting after being
+rendered: a vertex list reads as plausible long after the shape has stopped being recognisable. And
+the markers came out on the wrong ends, because `farthestBoundaryPair` returned the pair in search
+order and the double BFS walks *away* from cell 0 — so the far corner came back first, starting the
+maze at the bottom of the page and putting the cheese where the mouse belongs. The pair is ordered
+now, which fixes the solution's direction as well as the drawings.
+
+**Phase 2 — reordered by measurement.**
+
+1. **The PDF writer, first.** Safari shrinks a printed page to about 93% while reporting 100% (§7).
+   Nothing else is worth building while the output is the wrong size. Emit the PDF directly: the
+   drawing primitives are lines, cubic Béziers, one stroke width and black, so a content stream
+   needs `w`, `J`, `j`, `m`, `l`, `c`, `S` and a minimal object table — roughly 200–250 lines with
+   no dependencies. Measure the result with the same ruler before believing it.
+2. **On-screen solving.** Printing needs an adult *and* a printer, so most of the time what a child
+   does with an iPad is play. Track which cell the finger is in and permit only moves to adjacent
+   cells sharing a passage; the cell is the target, which at crayon size is 12 mm.
+3. Print queue. Hex and polar grids. Sketch and Cave styles. Letter and name mazes.
 
 **Phase 3**
-Batch booklet export — "20 pages, increasing difficulty" as a single PDF, which is nearly free once phase 2 lands and is the real use case for an adult before a car trip. Phone layout. Share codes. Objective mazes (collect three stars in order).
+Batch booklet export — "20 pages, increasing difficulty" as one PDF, nearly free once the writer
+exists and the real use case for an adult before a car trip. Phone layout. Share codes. Objective
+mazes.
+
+### Deployment, and one way it goes wrong
+
+Pages must be set to **Source: GitHub Actions**. Left on "Deploy from a branch", GitHub's built-in
+`pages build and deployment` workflow also runs on every push and publishes the repository root
+verbatim — including the source `index.html`, which points at `/src/main.tsx`, a file that exists
+only during development. Both deployments then race, and the site works or shows nothing depending
+on which finished last.
+
+It presented as an intermittent blank page in Safari and took four rounds to find, because every
+plausible theory — a stale cache, the subpath, a syntax cliff, CORS on the module script — was
+wrong. What found it was making the failure page report the bundle URL it had tried to load.
 
 ## 11. Three creative directions
 

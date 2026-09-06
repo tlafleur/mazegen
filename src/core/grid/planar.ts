@@ -56,4 +56,10 @@ export interface PlanarGrid {
    * leave the solution line detached from its own gap once jitter is on.
    */
   openingSegment(cell: CellId): Segment | null
+  /**
+   * Which way the opening faces, as a unit vector, or null for a cell that is
+   * not on the outline. Decoration is placed along it, outside the maze, which
+   * is how it stays clear of the walls without any collision test.
+   */
+  openingNormal(cell: CellId): Point | null
 }

@@ -3,6 +3,7 @@ import type { PlanarGrid, Point, Segment } from '../core/grid/planar'
 import { chainSegments } from './chain'
 import { DEFAULT_MARGIN, type Paper } from './page'
 import { CLASSIC, MAX_JITTER, jitterOffset, polylinePath, type Style } from './style'
+import { CHEESE, MOUSE, renderMarker } from './marker'
 
 export interface RenderOptions {
   readonly paper: Paper
@@ -10,6 +11,8 @@ export interface RenderOptions {
   readonly margin?: number
   readonly showSolution?: boolean
   readonly style?: Style
+  /** Draw a mouse at the entrance and cheese at the exit. */
+  readonly markers?: boolean
   /** Varies the jitter without changing the maze. */
   readonly styleSeed?: number
   /** Draw a 100 mm reference line and a caption in the bottom margin. */
@@ -142,6 +145,34 @@ export function renderSvg(
 
   const view = opts.crop ?? { x: 0, y: 0, width: paper.width, height: paper.height }
 
+  // Drawn outside the outline, along the direction the opening faces, so they
+  // never collide with a wall and need no test that they have not.
+  let markers = ''
+  if (opts.markers === true) {
+    for (const [cell, marker] of [
+      [maze.start, MOUSE],
+      [maze.end, CHEESE],
+    ] as const) {
+      const outward = grid.openingNormal(cell)
+      if (outward === null) continue
+      markers += renderMarker(
+        {
+          marker,
+          at: openingPoint(grid, cell, place, ox, oy),
+          outward,
+          // Big enough to read on paper, small enough to clear the margin at
+          // every cell size: the tightest is 13.7 mm above a Letter crayon grid.
+          size: 10,
+          gap: 1.5,
+          // Lighter than the walls. At the marker's scale a wall-weight stroke
+          // closes the cheese into a solid triangle.
+          stroke: Math.max(opts.stroke * 0.5, 0.35),
+        },
+        paper,
+      )
+    }
+  }
+
   return (
     `<svg xmlns="http://www.w3.org/2000/svg" width="${f(view.width)}mm"` +
     ` height="${f(view.height)}mm"` +
@@ -150,6 +181,7 @@ export function renderSvg(
     `<path d="${walls}" fill="none" stroke="#000" stroke-width="${f(opts.stroke)}"` +
     ` stroke-linecap="round" stroke-linejoin="round"/>` +
     solutionPath +
+    markers +
     rule +
     `</svg>`
   )

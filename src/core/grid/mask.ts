@@ -98,6 +98,111 @@ export function starMask(points = 5, innerRatio = 0.6): Mask {
 }
 
 /**
+ * Objects, as polygons.
+ *
+ * Coordinates are the mask system from the top of this file: centred, the
+ * shorter axis spanning [-1, 1], y growing downward. On a portrait page that
+ * leaves roughly [-1.33, 1.33] vertically, so tall subjects have room to spare
+ * and wide ones do not — the fish below is drawn deliberately chunky for that
+ * reason rather than in the proportions a fish actually has.
+ *
+ * Two constraints shape all of them, both enforced by test: a shape has to keep
+ * enough of the page to still be a maze, and it must not narrow anywhere to a
+ * single cell, which stops being maze and becomes a spike.
+ */
+
+/** Nose up, fins at the base. Suits a portrait page better than anything else here. */
+export const rocketMask: Mask = polygonMask([
+  { x: 0, y: -1.22 },
+  { x: 0.32, y: -0.76 },
+  { x: 0.48, y: -0.3 },
+  { x: 0.48, y: 0.56 },
+  { x: 0.95, y: 1.08 },
+  { x: 0.52, y: 1.02 },
+  { x: 0.48, y: 1.22 },
+  { x: -0.48, y: 1.22 },
+  { x: -0.52, y: 1.02 },
+  { x: -0.95, y: 1.08 },
+  { x: -0.48, y: 0.56 },
+  { x: -0.48, y: -0.3 },
+  { x: -0.32, y: -0.76 },
+])
+
+/** Facing right, with a forked tail. Deeper-bodied than life, to fill the page. */
+export const fishMask: Mask = polygonMask([
+  { x: 1.0, y: 0.04 },
+  { x: 0.6, y: -0.56 },
+  { x: 0.05, y: -0.82 },
+  { x: -0.45, y: -0.6 },
+  { x: -0.63, y: -0.3 },
+  { x: -0.98, y: -1.02 },
+  { x: -0.8, y: 0 },
+  { x: -0.98, y: 1.02 },
+  { x: -0.63, y: 0.3 },
+  { x: -0.45, y: 0.6 },
+  { x: 0.05, y: 0.82 },
+  { x: 0.6, y: 0.56 },
+])
+
+/**
+ * Wrapper below, a swirl of frosting above.
+ *
+ * The swirl is deliberately shallow. Drawn with the swing a piped frosting
+ * actually has, each bump tapers to a cell or two at fine-pen size and the spur
+ * test rejects it; halving the horizontal swing keeps the silhouette readable
+ * without the spikes.
+ */
+export const cupcakeMask: Mask = polygonMask([
+  { x: -0.4, y: 1.24 },
+  { x: 0.4, y: 1.24 },
+  { x: 0.7, y: 0.24 },
+  { x: 0.92, y: 0.1 },
+  { x: 0.76, y: -0.24 },
+  { x: 0.88, y: -0.46 },
+  { x: 0.6, y: -0.72 },
+  { x: 0.66, y: -0.92 },
+  { x: 0.26, y: -1.02 },
+  { x: 0, y: -1.18 },
+  { x: -0.26, y: -1.02 },
+  { x: -0.66, y: -0.92 },
+  { x: -0.6, y: -0.72 },
+  { x: -0.88, y: -0.46 },
+  { x: -0.76, y: -0.24 },
+  { x: -0.92, y: 0.1 },
+  { x: -0.7, y: 0.24 },
+])
+
+/**
+ * A long-neck facing right: the silhouette a child reads as "dinosaur" fastest.
+ *
+ * The legs are stubby and thick on purpose. Drawn in proportion they narrow to
+ * a cell or two at crayon size, which the spur test rejects — correctly, since
+ * a two-cell-wide leg offers no choices and reads as a spike.
+ */
+export const dinosaurMask: Mask = polygonMask([
+  { x: 0.98, y: -1.0 },
+  { x: 1.0, y: -0.64 },
+  { x: 0.7, y: -0.54 },
+  { x: 0.5, y: -0.1 },
+  { x: 0.18, y: 0.18 },
+  { x: -0.32, y: 0.12 },
+  { x: -0.66, y: 0.2 },
+  { x: -1.0, y: 0.46 },
+  { x: -0.6, y: 0.56 },
+  { x: -0.54, y: 0.66 },
+  { x: -0.58, y: 1.24 },
+  { x: -0.14, y: 1.24 },
+  { x: -0.16, y: 0.88 },
+  { x: 0.18, y: 0.9 },
+  { x: 0.16, y: 1.24 },
+  { x: 0.62, y: 1.24 },
+  { x: 0.58, y: 0.66 },
+  { x: 0.78, y: 0.22 },
+  { x: 0.88, y: -0.42 },
+  { x: 0.78, y: -0.98 },
+])
+
+/**
  * The shape library for v1.
  *
  * `aspect` is the grid's height divided by its width, needed by the shapes that
@@ -111,5 +216,9 @@ export function shapeLibrary(aspect: number): readonly Shape[] {
     { id: 'circle', label: 'Circle', mask: circleMask },
     { id: 'heart', label: 'Heart', mask: heartMask },
     { id: 'star', label: 'Star', mask: starMask() },
+    { id: 'rocket', label: 'Rocket', mask: rocketMask },
+    { id: 'fish', label: 'Fish', mask: fishMask },
+    { id: 'cupcake', label: 'Cupcake', mask: cupcakeMask },
+    { id: 'dinosaur', label: 'Dinosaur', mask: dinosaurMask },
   ]
 }

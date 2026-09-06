@@ -5,54 +5,48 @@ Printable maze generator — customizable black-and-white mazes sized for US Let
 Built for an iPad, aimed at a child operating it directly. See [docs/DESIGN.md](docs/DESIGN.md)
 for the full plan: architecture, the difficulty model, line styles, and the creative direction.
 
-## Status: phase 0
+## Status: phase 1
 
-Phase 0 exists to prove the print path and nothing else. It is deliberately style-free —
-square grid, one carving algorithm, plain straight lines. The look comes in phase 1.
+Live at **https://tlafleur.github.io/mazegen/** — installable, and works offline once loaded.
 
-What works:
+- Square grids on US Letter and A4, at four cell sizes named after what you would draw with
+- Five difficulty levels, calibrated by measurement rather than assumption
+- Six shapes: page, rounded, oval, circle, heart, star
+- Four line styles: Classic, Soft, Doodle, Wonky
+- Picture-led preset cards, a filmstrip of recent mazes, and a grown-up area for the rest
+- Optional answer overlay and a 100 mm calibration ruler
 
-- Square grids on Letter and A4, at four cell sizes named by what you would draw with
-- Recursive backtracker carving, seeded and reproducible
-- Breadth-first solver, with the answer as an optional dashed overlay
-- SVG output sized to the sheet in real millimetres
-- Browser print via `@page`
+Still to come in phase 1: object shapes (rocket, dinosaur, fish, cupcake) and illustrated start and
+end markers.
 
-## Live
+## Printing, and what is known about it
 
-https://tlafleur.github.io/mazegen/ — deployed from `main` by
-`.github/workflows/deploy.yml`, with the tests gating the deploy. Pull requests run the same
-build and tests but stop short of publishing.
+**Safari shrinks the page.** Printed from an iPad with the print sheet reporting US Letter and
+Scaling 100%, the 100 mm reference line measures about 93 mm. "100%" there means the *user* applied
+no scaling; Safari still fits the sheet into the printer's printable area.
+
+**A PDF prints at 1:1.** The same sheet as a PDF, printed from the iPad through the share sheet,
+comes out the right size — so the fault is Safari's web print, not the print system. The next thing
+being built is a PDF writer that emits the page directly, which routes around the component doing
+the scaling.
+
+Until then, printed cells are about 7% smaller than the label says.
+
+The ruler exists for exactly this. Turn it on under Grown-up settings, print a sheet, and measure
+the line: any difference is scaling applied between the screen and the paper. Two earlier prints
+reported 100% and were believed without measuring — the dialog agreeing with you is not evidence.
+
+Pick the paper your printer actually holds. There is no page size that prints 1:1 on both Letter
+and A4, so the other one gets scaled down to fit, which shrinks the cells with it.
 
 ## Running it
 
 ```sh
 npm install
 npm run dev      # http://localhost:5173
-npm test         # 37 tests, no browser needed
-npm run build
+npm test         # 169 tests, no browser needed
+npm run build    # includes a check that the offline build is intact
 ```
-
-## The print test
-
-This is the point of phase 0, and it needs real hardware — an iPad and a printer.
-
-Each sheet carries a 100 mm reference line and a caption naming the paper, cell size, grid
-and seed. Print one, measure the line with a ruler, and any difference is scaling applied
-somewhere between the page and the paper. Safari on iOS applies its own scaling and margins
-depending on the print sheet settings, and CSS cannot fully override it — which is exactly
-the risk this phase is here to measure. Check both Letter and A4, and check that nothing
-spills onto a second page.
-
-If the line does not measure 100 mm, that is the signal to bring the hand-rolled PDF writer
-forward from phase 2 and make it the primary output. See docs/DESIGN.md §7.
-
-**Pick the paper your printer actually holds.** There is no page size that prints 1:1 on both:
-Letter is 5.9 mm wider, A4 is 17.6 mm taller, so whichever you declare, the other printer
-scales the sheet down to fit. Printing an A4 sheet on a Letter printer lands around 91% once
-the printer's unprintable border is subtracted, and that scaling shrinks the cells with it — a
-12 mm crayon corridor becomes 10.9 mm. The app defaults the paper from the browser locale for
-this reason, and a scaled print is exactly what the 100 mm line is there to expose.
 
 ## Layout
 

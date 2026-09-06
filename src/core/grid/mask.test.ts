@@ -134,6 +134,21 @@ describe('MaskedGrid', () => {
     }
   })
 
+  it('puts the entrance above the exit', () => {
+    // The pair is ordered, not returned in search order. Unordered, the double
+    // BFS hands back the far end first, which starts the maze at the bottom of
+    // the page and puts the cheese where the mouse belongs.
+    for (const shape of ['rectangle', 'circle', 'heart'] as const) {
+      const base = gridFor(LETTER, 9)
+      const masks = { rectangle: rectangleMask, circle: circleMask, heart: heartMask }
+      const grid = new MaskedGrid(base, masks[shape])
+      const [start, end] = grid.farthestBoundaryPair()
+      const a = grid.cellCenter(start)
+      const b = grid.cellCenter(end)
+      expect(a.y < b.y || (a.y === b.y && a.x <= b.x)).toBe(true)
+    }
+  })
+
   it('picks opposite corners of a rectangle as entrance and exit', () => {
     const base = gridFor(LETTER, 12)
     const grid = new MaskedGrid(base, rectangleMask)
@@ -190,12 +205,21 @@ describe('every shape, on every sheet', () => {
     }
   })
 
-  it.each(cases)('leaves each shape enough of the page on $name', ({ base, aspect }) => {
+  it.each(cases)('leaves each shape enough maze on $name', ({ base, aspect }) => {
     for (const shape of shapeLibrary(aspect)) {
       const grid = new MaskedGrid(base, shape.mask)
-      // Even the star, the thinnest shape, must keep a usable maze after the
-      // largest-component prune — otherwise its points have snapped off.
-      expect(grid.cellCount).toBeGreaterThan(base.cellCount * 0.28)
+
+      // What matters is whether enough cells survive to be a maze at all. An
+      // earlier version of this test used a coverage fraction floor of 0.28,
+      // taken from the star when the star was the sparsest shape — which meant
+      // it measured the library that happened to exist rather than the property
+      // worth holding. A dinosaur is honestly sparser than a star: long neck,
+      // stubby legs, a lot of surrounding page. On the smallest grid it keeps
+      // 87 cells against the star's 101, and both are real mazes.
+      expect(grid.cellCount).toBeGreaterThan(60)
+      // A floor low enough to admit a sparse silhouette, high enough to reject
+      // anything that has thinned into filament.
+      expect(grid.cellCount).toBeGreaterThan(base.cellCount * 0.22)
     }
   })
 })
