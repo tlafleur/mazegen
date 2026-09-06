@@ -19,9 +19,46 @@
     <meta name="apple-mobile-web-app-title" content="mazegen" />
     <link rel="apple-touch-icon" href="./apple-touch-icon.png" />
     <link rel="icon" href="./icon.svg" type="image/svg+xml" />
+    <style>
+      .fatal {
+        max-width: 34rem;
+        margin: 12vh auto;
+        padding: 0 1.5rem;
+        font: 16px/1.6 -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+        color: #16181d;
+      }
+      .fatal h1 { font-size: 1.25rem; margin: 0 0 0.75rem; }
+      .fatal pre {
+        white-space: pre-wrap;
+        background: #f2f3f5;
+        padding: 0.75rem;
+        border-radius: 8px;
+        font-size: 13px;
+      }
+      .fatal kbd {
+        background: #f2f3f5;
+        border: 1px solid #d6d9de;
+        border-radius: 4px;
+        padding: 0 4px;
+        font: inherit;
+        font-size: 0.9em;
+      }
+    </style>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <div class="fatal">
+        <h1>mazegen could not start</h1>
+        <p>
+          The page loaded but the app did not. Usually that means the browser is holding an
+          older version.
+        </p>
+        <p>
+          A reload that ignores the cache normally fixes it: hold Shift and press reload, or
+          press <kbd>&#8984;</kbd> <kbd>Shift</kbd> <kbd>R</kbd>.
+        </p>
+      </div>
+    </div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
