@@ -155,31 +155,30 @@ export function placeMarker(
   p: MarkerPlacement,
   page: { width: number; height: number },
 ): PlacedMarkerPart[] {
-  // How far the drawing can reach before it runs into the printable edge. The
-  // outward vector is axis-aligned, so only one component matters.
-  const room =
-    p.outward.x !== 0
-      ? p.outward.x > 0
-        ? page.width - SAFE_INSET - p.at.x
-        : p.at.x - SAFE_INSET
-      : p.outward.y > 0
-        ? page.height - SAFE_INSET - p.at.y
-        : p.at.y - SAFE_INSET
+  // How far the drawing can reach along the way the opening faces before it
+  // runs into the printable edge. Written as a ray against the box rather than
+  // one axis at a time, because a hexagon's faces point diagonally.
+  const reach = (v: number, at: number, limit: number): number => {
+    if (v > 0) return (limit - SAFE_INSET - at) / v
+    if (v < 0) return (at - SAFE_INSET) / -v
+    return Infinity
+  }
+  const room = Math.min(
+    reach(p.outward.x, p.at.x, page.width),
+    reach(p.outward.y, p.at.y, page.height),
+  )
 
   const size = Math.min(p.size, room - p.gap)
   if (size < MIN_SIZE) return []
 
   const half = size / 2
-  let cx = p.at.x + p.outward.x * (p.gap + half)
-  let cy = p.at.y + p.outward.y * (p.gap + half)
-
-  // Across the opening the drawing is centred, which near a corner would push
-  // it off the sheet. Slide it back rather than dropping it.
-  if (p.outward.x === 0) {
-    cx = Math.min(Math.max(cx, SAFE_INSET + half), page.width - SAFE_INSET - half)
-  } else {
-    cy = Math.min(Math.max(cy, SAFE_INSET + half), page.height - SAFE_INSET - half)
-  }
+  // Near a corner the box can still poke out sideways. Slide it back on to the
+  // sheet rather than dropping it; the ray above already fits its outward
+  // reach, so this only ever moves it across that direction.
+  const clamp = (v: number, limit: number): number =>
+    Math.min(Math.max(v, SAFE_INSET + half), limit - SAFE_INSET - half)
+  const cx = clamp(p.at.x + p.outward.x * (p.gap + half), page.width)
+  const cy = clamp(p.at.y + p.outward.y * (p.gap + half), page.height)
 
   // The line scales with the drawing. Held fixed, a wall-weight stroke closes
   // the cheese wedge into a solid triangle and fills in its holes as soon as

@@ -1,9 +1,6 @@
-import type { CellId, EdgeId, Topology } from '../types'
-import { SquareGrid } from './square'
+import type { CellId, EdgeId, RowStructured, Topology } from '../types'
 import type { Mask } from './mask'
-import { FACE_NORMALS, type PlanarGrid, type Point, type Segment } from './planar'
-
-const FACES = 4
+import type { BaseGrid, PlanarGrid, Point, Segment } from './planar'
 
 /**
  * A grid restricted to the cells inside a shape.
@@ -16,6 +13,9 @@ const FACES = 4
  *
  * A rectangle is this class with a mask that admits everything, so there is one
  * implementation of boundaries and openings rather than two.
+ *
+ * It is written against `BaseGrid`, not against squares, so hexagons get
+ * masking, shapes, entrances, exits and markers for nothing.
  */
 export class MaskedGrid implements Topology, PlanarGrid {
   readonly cellCount: number
@@ -39,7 +39,7 @@ export class MaskedGrid implements Topology, PlanarGrid {
   private readonly openFace: Int32Array
 
   constructor(
-    readonly base: SquareGrid,
+    readonly base: BaseGrid,
     mask: Mask,
   ) {
     this.pitch = base.pitch
@@ -122,9 +122,9 @@ export class MaskedGrid implements Topology, PlanarGrid {
     const oy = p.y - cy
     let best = -1
     let bestDot = -Infinity
-    for (let dir = 0; dir < FACES; dir++) {
+    for (let dir = 0; dir < this.base.faces; dir++) {
       if (this.neighbourAcross(cell, dir) !== -1) continue
-      const nrm = FACE_NORMALS[dir] as Point
+      const nrm = this.base.faceNormal(dir)
       const dot = ox * nrm.x + oy * nrm.y
       if (dot > bestDot) {
         bestDot = dot
@@ -169,12 +169,10 @@ export class MaskedGrid implements Topology, PlanarGrid {
   }
 
   cellAtPoint(p: Point): CellId {
-    const col = Math.floor(p.x / this.pitch)
-    const row = Math.floor(p.y / this.pitch)
-    if (col < 0 || row < 0 || col >= this.base.cols || row >= this.base.rows) return -1
+    const c = this.base.cellAtPoint(p)
     // Outside the mask reads the same as outside the grid: there is no cell
     // there, so a finger over it is not a move.
-    return this.fromBase[this.base.cellAt(col, row)] as CellId
+    return c === -1 ? -1 : (this.fromBase[c] as CellId)
   }
 
   wallSegment(edge: EdgeId): Segment {
@@ -185,7 +183,7 @@ export class MaskedGrid implements Topology, PlanarGrid {
     const out: Segment[] = []
     for (let c = 0; c < this.cellCount; c++) {
       const opening = openAt.includes(c) ? (this.openFace[c] as number) : -1
-      for (let dir = 0; dir < FACES; dir++) {
+      for (let dir = 0; dir < this.base.faces; dir++) {
         if (this.neighbourAcross(c, dir) !== -1 || dir === opening) continue
         out.push(this.base.faceSegment(this.toBase[c] as CellId, dir))
       }
@@ -207,7 +205,7 @@ export class MaskedGrid implements Topology, PlanarGrid {
 
   openingNormal(cell: CellId): Point | null {
     const dir = this.openFace[cell] as number
-    return dir === -1 ? null : (FACE_NORMALS[dir] as Point)
+    return dir === -1 ? null : this.base.faceNormal(dir)
   }
 
   /** Cells with at least one face on the outline. */
@@ -266,13 +264,15 @@ export class MaskedGrid implements Topology, PlanarGrid {
   }
 
   /**
-   * The underlying rectangle, when nothing was masked away.
+   * The underlying rows, when there are any and nothing was masked away.
    *
-   * Sidewinder carves along whole rows, so it cannot run on a shape with ragged
-   * ones; this is how a caller finds out whether that option is available.
+   * Sidewinder carves along whole rows, so it can run on neither a shape with
+   * ragged ones nor a hexagonal grid, where a cell has two neighbours above it
+   * rather than one. This is how a caller finds out.
    */
-  rowStructured(): SquareGrid | null {
-    return this.isComplete ? this.base : null
+  rowStructured(): (Topology & RowStructured) | null {
+    if (!this.isComplete) return null
+    return this.base.rowStructured?.() ?? null
   }
 }
 
@@ -283,7 +283,7 @@ export class MaskedGrid implements Topology, PlanarGrid {
  * cell sizes — and a maze in two pieces is unsolvable, so only the biggest
  * piece survives.
  */
-function largestComponent(base: SquareGrid, inside: Uint8Array): CellId[] {
+function largestComponent(base: BaseGrid, inside: Uint8Array): CellId[] {
   const seen = new Uint8Array(base.cellCount)
   let best: CellId[] = []
 

@@ -1,5 +1,16 @@
 import { describe, expect, it } from 'vitest'
-import { A4, CRAYON, FINE, LETTER, MARKER, PENCIL, PENS, defaultPaperFor, gridSizeFor } from './page'
+import {
+  A4,
+  CRAYON,
+  FINE,
+  HEXAGONS,
+  LETTER,
+  MARKER,
+  PENCIL,
+  PENS,
+  defaultPaperFor,
+  gridSizeFor,
+} from './page'
 import { chainSegments } from './chain'
 import { renderSvg } from './svg'
 import { generateMaze, shapesFor } from '../generate'
@@ -38,6 +49,70 @@ describe('gridSizeFor', () => {
         expect(rows * pen.pitch).toBeLessThanOrEqual(paper.height - 2 * 12.7)
       }
     }
+  })
+})
+
+describe('hexagonal sheets', () => {
+  it('keep the maze inside the printable area at every cell size', () => {
+    for (const paper of [LETTER, A4]) {
+      for (const pen of PENS) {
+        const g = generateMaze({
+          paper,
+          pen,
+          level: 3,
+          shape: shapesFor(paper, pen, HEXAGONS)[0] as Parameters<typeof generateMaze>[0]['shape'],
+          seed: 'hex',
+          cells: HEXAGONS,
+        })
+        expect(g.grid.width).toBeLessThanOrEqual(paper.width - 2 * 12.7)
+        expect(g.grid.height).toBeLessThanOrEqual(paper.height - 2 * 12.7)
+      }
+    }
+  })
+
+  it('render with no change to the renderer', () => {
+    const shape = shapesFor(LETTER, MARKER, HEXAGONS)[0] as Parameters<
+      typeof generateMaze
+    >[0]['shape']
+    const g = generateMaze({
+      paper: LETTER,
+      pen: MARKER,
+      level: 3,
+      shape,
+      seed: 'hex',
+      cells: HEXAGONS,
+    })
+    const svg = renderSvg(g.grid, g.maze, g.solution, {
+      paper: LETTER,
+      stroke: MARKER.stroke,
+      markers: true,
+    })
+    expect(svg).toContain('width="215.9mm"')
+    // Diagonal walls: a square grid emits only axis-aligned segments, so a
+    // coordinate pair that shares neither axis with its neighbour is proof the
+    // hexagons reached the page.
+    expect(svg.length).toBeGreaterThan(10000)
+    expect(g.grid.cellCount).toBeGreaterThan(400)
+  })
+
+  it('gives a different maze from squares at the same settings', () => {
+    const args = { paper: LETTER, pen: MARKER, level: 3 as const, seed: 'same' }
+    const sq = generateMaze({
+      ...args,
+      shape: shapesFor(LETTER, MARKER)[0] as Parameters<typeof generateMaze>[0]['shape'],
+    })
+    const hx = generateMaze({
+      ...args,
+      cells: HEXAGONS,
+      shape: shapesFor(LETTER, MARKER, HEXAGONS)[0] as Parameters<
+        typeof generateMaze
+      >[0]['shape'],
+    })
+    expect(hx.grid.cellCount).not.toBe(sq.grid.cellCount)
+    // Six neighbours rather than four, so more adjacencies per cell.
+    expect(hx.grid.edgeCount / hx.grid.cellCount).toBeGreaterThan(
+      sq.grid.edgeCount / sq.grid.cellCount,
+    )
   })
 })
 

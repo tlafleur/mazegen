@@ -532,7 +532,8 @@ now, which fixes the solution's direction as well as the drawings.
    What it cost, and the two placement bugs it exposed, are in §7.
 2. ~~**On-screen solving.**~~ **Done.** Printing needs an adult *and* a printer, so most of the
    time what a child does with an iPad is play. See §8 for what the rules turned out to be.
-3. Print queue. Hex and polar grids. Sketch and Cave styles. Letter and name mazes.
+3. ~~Hex grid.~~ **Done** — see below. Print queue. Polar grid. Sketch and Cave styles. Letter and
+   name mazes.
 
 **Phase 3**
 Batch booklet export — "20 pages, increasing difficulty" as one PDF, nearly free once the writer
@@ -550,6 +551,43 @@ on which finished last.
 It presented as an intermittent blank page in Safari and took four rounds to find, because every
 plausible theory — a stale cache, the subpath, a syntax cliff, CORS on the module script — was
 wrong. What found it was making the failure page report the bundle URL it had tried to load.
+
+### Hexagons, and what they cost
+
+A second cell complex was the real test of §3's claim that topology, carving and drawing are
+separable. The result: **HexGrid is 250 lines and nothing else changed.** Every carver, the
+braider, the solver, the metrics, the difficulty recipes, the shape masks, the entrance and exit
+search, the markers, the wall chaining, both output formats and the on-screen solving all work on
+it untouched.
+
+What it did cost was one honest refactor. `MaskedGrid` had been written against `SquareGrid`
+specifically; it is now written against a `BaseGrid` interface — a cell has `faces` sides, and the
+only questions anyone asks are where a face is, what lies across it, and which way it points. Two
+smaller things fell out of that: `placeMarker` had been checking the printable margin one axis at
+a time, which is only correct for faces that point along an axis, and is now a ray against the box;
+and `rowStructured` moved from "is this a rectangle" to "does this grid have rows at all".
+
+Hexagons are worth having for the puzzle, not the novelty. Six neighbours and no four-way junctions
+means no long straight corridors and no free choices — every junction is a real fork. The diagonal
+walls also suit the wobbly line styles, which on a square grid only ever bend at right angles.
+
+Two things had to be got right or nothing would have worked:
+
+**Adjacent cells must name the same lattice vertices**, not merely vertices at the same
+coordinates. Walls chain into polylines by vertex id, and the jitter styles displace by vertex id
+too, so a duplicate id at a shared corner would both fragment the path and tear the walls apart at
+every junction. There is a test that walks every cell, every face, and asserts the pair matches
+what the neighbour calls it.
+
+**A point has to resolve to a hexagon**, for solving on screen. Rounding each axis separately picks
+the wrong cell near a corner; the fix is cube coordinates — round all three, then discard whichever
+moved furthest. Tested at nine tenths of the way to every corner of every cell, which is exactly
+where the naive version fails.
+
+Sidewinder is the one thing that cannot follow. "Carve east along a run, then north out of it" has
+no single answer when a cell has two neighbours above it, so `HexGrid` declines `rowStructured` and
+the gentlest difficulty falls back to Kruskal on its own — which is what that interface was
+introduced for in §3, working as intended without a special case anywhere.
 
 ## 11. Three creative directions
 

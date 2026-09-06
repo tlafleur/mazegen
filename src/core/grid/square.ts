@@ -1,5 +1,13 @@
-import type { CellId, EdgeId, RowStructured, Topology } from '../types'
-import { EAST, NORTH, SOUTH, type Point, type Segment } from './planar'
+import type { CellId, EdgeId, RowStructured } from '../types'
+import {
+  EAST,
+  FACE_NORMALS,
+  NORTH,
+  SOUTH,
+  type BaseGrid,
+  type Point,
+  type Segment,
+} from './planar'
 
 export type { Point, Segment }
 
@@ -14,7 +22,9 @@ export type { Point, Segment }
  * Coordinates are millimetres with the origin at the maze's top-left corner.
  * Placing the maze on a page is the renderer's job.
  */
-export class SquareGrid implements Topology, RowStructured {
+export class SquareGrid implements BaseGrid, RowStructured {
+  /** Four sides, in the order NORTH, EAST, SOUTH, WEST. */
+  readonly faces = 4
   readonly cellCount: number
   readonly edgeCount: number
   readonly vertexCount: number
@@ -112,6 +122,17 @@ export class SquareGrid implements Topology, RowStructured {
       x: (this.colOf(cell) + 0.5) * this.pitch,
       y: (this.rowOf(cell) + 0.5) * this.pitch,
     }
+  }
+
+  cellAtPoint(p: Point): CellId {
+    const col = Math.floor(p.x / this.pitch)
+    const row = Math.floor(p.y / this.pitch)
+    if (col < 0 || row < 0 || col >= this.cols || row >= this.rows) return -1
+    return this.cellAt(col, row)
+  }
+
+  faceNormal(dir: number): Point {
+    return FACE_NORMALS[dir] as Point
   }
 
   /** The wall this edge draws when it is left closed. */

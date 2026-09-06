@@ -5,12 +5,20 @@ import { sheetOrigin } from './render/sheet'
 import { polylineCommands, toSvgPath } from './render/path'
 import { follow, startTrail, type Trail } from './core/trail'
 import type { Point } from './core/grid/planar'
-import { shapeIcon, styleThumbnail } from './render/thumbnail'
+import { cellsThumbnail, shapeIcon, styleThumbnail } from './render/thumbnail'
 import { STYLES } from './render/style'
 import { RECIPES, type Level } from './core/difficulty'
 import { hashSeed } from './core/rng'
 import { PRESETS, presetFor } from './presets'
-import { MARKER, PAPERS, PENS, defaultPaperFor, type Paper } from './render/page'
+import {
+  CELL_KINDS,
+  MARKER,
+  PAPERS,
+  PENS,
+  SQUARES,
+  defaultPaperFor,
+  type Paper,
+} from './render/page'
 
 const HISTORY_LIMIT = 6
 
@@ -25,6 +33,7 @@ interface Snapshot {
   readonly level: Level
   readonly shapeId: string
   readonly styleId: string
+  readonly cellsId: string
   readonly seed: string
   readonly svg: string
 }
@@ -93,6 +102,7 @@ export default function App() {
   const [level, setLevel] = useState<Level>(2)
   const [penId, setPenId] = useState(MARKER.id)
   const [shapeId, setShapeId] = useState('rectangle')
+  const [cellsId, setCellsId] = useState(SQUARES.id)
   const [styleId, setStyleId] = useState('doodle')
   const [seed, setSeed] = useState(newSeed)
   const [showSolution, setShowSolution] = useState(false)
@@ -102,20 +112,22 @@ export default function App() {
   const [playing, setPlaying] = useState(false)
 
   const pen = PENS.find((p) => p.id === penId) ?? MARKER
-  const shapes = useMemo(() => shapesFor(paper, pen), [paper, pen])
+  const cells = CELL_KINDS.find((c) => c.id === cellsId) ?? SQUARES
+  const shapes = useMemo(() => shapesFor(paper, pen, cells), [paper, pen, cells])
   const shape = shapes.find((s) => s.id === shapeId) ?? (shapes[0] as (typeof shapes)[number])
   const style = STYLES.find((s) => s.id === styleId) ?? (STYLES[0] as (typeof STYLES)[number])
   const activePreset = presetFor(level, penId)
 
   const maze = useMemo(
-    () => generateMaze({ paper, pen, level, shape, seed }),
-    [paper, pen, level, shape, seed],
+    () => generateMaze({ paper, pen, level, shape, seed, cells }),
+    [paper, pen, level, shape, seed, cells],
   )
 
   const styleSeed = hashSeed(seed)
   const base = { paper, stroke: pen.stroke, style, styleSeed, markers }
   const caption =
-    `100 mm · ${paper.label} · ${pen.label} · ${shape.label} · ` + `${style.label} · seed ${seed}`
+    `100 mm · ${paper.label} · ${pen.label} · ${cells.label} · ${shape.label} · ` +
+    `${style.label} · seed ${seed}`
 
   const svg = useMemo(
     () => renderSvg(maze.grid, maze.maze, maze.solution, { ...base, showSolution, calibration, caption }),
@@ -235,16 +247,26 @@ export default function App() {
     [maze, paper, pen, style, styleSeed, markers],
   )
 
-  const key = `${paper.id}|${penId}|${level}|${shapeId}|${styleId}|${seed}`
+  const key = `${paper.id}|${penId}|${level}|${shapeId}|${styleId}|${cellsId}|${seed}`
   useEffect(() => {
     setHistory((prev) => {
       // Never reorder: a maze a child is looking for should stay where they
       // last saw it, not jump to the front because they revisited it.
       if (prev.some((h) => h.key === key)) return prev
-      const entry: Snapshot = { key, paperId: paper.id, penId, level, shapeId, styleId, seed, svg: plate }
+      const entry: Snapshot = {
+        key,
+        paperId: paper.id,
+        penId,
+        level,
+        shapeId,
+        styleId,
+        cellsId,
+        seed,
+        svg: plate,
+      }
       return [entry, ...prev].slice(0, HISTORY_LIMIT)
     })
-  }, [key, plate, paper.id, penId, level, shapeId, styleId, seed])
+  }, [key, plate, paper.id, penId, level, shapeId, styleId, cellsId, seed])
 
   const restore = (s: Snapshot): void => {
     setPaper(PAPERS.find((p) => p.id === s.paperId) ?? paper)
@@ -252,6 +274,7 @@ export default function App() {
     setLevel(s.level)
     setShapeId(s.shapeId)
     setStyleId(s.styleId)
+    setCellsId(s.cellsId)
     setSeed(s.seed)
   }
 
@@ -262,6 +285,10 @@ export default function App() {
     [shapes, aspect],
   )
   const styleIcons = useMemo(() => new Map(STYLES.map((s) => [s.id, styleThumbnail(s)])), [])
+  const cellIcons = useMemo(
+    () => new Map(CELL_KINDS.map((c) => [c.id, cellsThumbnail(c)])),
+    [],
+  )
 
   // Preset cards show a real maze at those settings, which is how a child sees
   // the difference between crayon-sized and fine-pen-sized without being told.
@@ -279,14 +306,14 @@ export default function App() {
     }
     return new Map(
       PRESETS.map((p) => {
-        const g = generateMaze({ paper, pen: p.pen, level: p.level, shape, seed: 'card' })
+        const g = generateMaze({ paper, pen: p.pen, level: p.level, shape, seed: 'card', cells })
         return [
           p.id,
           renderSvg(g.grid, g.maze, g.solution, { paper, stroke: p.pen.stroke, style, crop }),
         ]
       }),
     )
-  }, [paper, shape, style])
+  }, [paper, shape, style, cells])
 
   const printCss =
     `@page { size: ${paper.width}mm ${paper.height}mm; margin: 0; }\n` +
@@ -380,6 +407,19 @@ export default function App() {
               label={s.label}
             >
               <Svg markup={shapeIcons.get(s.id) ?? ''} className="icon" />
+            </Chip>
+          ))}
+        </Group>
+
+        <Group label="Cells" columns={2}>
+          {CELL_KINDS.map((c) => (
+            <Chip
+              key={c.id}
+              on={c.id === cells.id}
+              onClick={() => setCellsId(c.id)}
+              label={c.label}
+            >
+              <Svg markup={cellIcons.get(c.id) ?? ''} className="icon" />
             </Chip>
           ))}
         </Group>
