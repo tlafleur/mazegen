@@ -196,6 +196,11 @@ export class MaskedGrid implements Topology, PlanarGrid {
     return this.base.faceSegment(this.toBase[cell] as CellId, dir)
   }
 
+  openingNormal(cell: CellId): Point | null {
+    const dir = this.openFace[cell] as number
+    return dir === -1 ? null : (FACE_NORMALS[dir] as Point)
+  }
+
   /** Cells with at least one face on the outline. */
   boundaryCells(): CellId[] {
     const out: CellId[] = []
@@ -238,7 +243,17 @@ export class MaskedGrid implements Topology, PlanarGrid {
     }
 
     const a = sweep(this.boundaryCells()[0] as CellId)
-    return [a, sweep(a)]
+    const b = sweep(a)
+
+    // Order them, rather than returning whichever the search happened to reach
+    // first. The double BFS starts from cell 0 and walks away from it, so `a` is
+    // the *far* end — returning the pair unordered puts the entrance at the
+    // bottom of the page and sends the solution upward, and puts the mouse at
+    // the finish and the cheese at the start.
+    const pa = this.cellCenter(a)
+    const pb = this.cellCenter(b)
+    const aFirst = pa.y !== pb.y ? pa.y < pb.y : pa.x <= pb.x
+    return aFirst ? [a, b] : [b, a]
   }
 
   /**

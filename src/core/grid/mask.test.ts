@@ -134,6 +134,21 @@ describe('MaskedGrid', () => {
     }
   })
 
+  it('puts the entrance above the exit', () => {
+    // The pair is ordered, not returned in search order. Unordered, the double
+    // BFS hands back the far end first, which starts the maze at the bottom of
+    // the page and puts the cheese where the mouse belongs.
+    for (const shape of ['rectangle', 'circle', 'heart'] as const) {
+      const base = gridFor(LETTER, 9)
+      const masks = { rectangle: rectangleMask, circle: circleMask, heart: heartMask }
+      const grid = new MaskedGrid(base, masks[shape])
+      const [start, end] = grid.farthestBoundaryPair()
+      const a = grid.cellCenter(start)
+      const b = grid.cellCenter(end)
+      expect(a.y < b.y || (a.y === b.y && a.x <= b.x)).toBe(true)
+    }
+  })
+
   it('picks opposite corners of a rectangle as entrance and exit', () => {
     const base = gridFor(LETTER, 12)
     const grid = new MaskedGrid(base, rectangleMask)

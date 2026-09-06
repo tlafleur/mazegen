@@ -448,12 +448,16 @@ Difficulty model with measured calibration. Cell sizes. Six shapes. Four line st
 preset cards, drawn shape and style pickers, a filmstrip of recent mazes, a grown-up area. Answer
 toggle. Seeds and regeneration. PWA install and full offline. Deployed.
 
-Outstanding, and both are what make it Doodle World rather than Classic with wobbly lines:
+Ten shapes, including rocket, fish, cupcake and dinosaur. A mouse at the entrance and cheese at the
+exit, drawn outside the outline along the direction the opening faces — which is how decoration
+keeps clear of the walls without any collision test.
 
-- **Object shapes** — rocket, dinosaur, fish, cupcake. Masks like any other; the polygon primitive
-  the star uses already covers them.
-- **Illustrated start and end markers** — a mouse at one end, cheese at the other. Needs a slot
-  system that places art at the openings without colliding with walls.
+Two things that only showed up on screen. Both object silhouettes needed correcting after being
+rendered: a vertex list reads as plausible long after the shape has stopped being recognisable. And
+the markers came out on the wrong ends, because `farthestBoundaryPair` returned the pair in search
+order and the double BFS walks *away* from cell 0 — so the far corner came back first, starting the
+maze at the bottom of the page and putting the cheese where the mouse belongs. The pair is ordered
+now, which fixes the solution's direction as well as the drawings.
 
 **Phase 2 — reordered by measurement.**
 

@@ -93,6 +93,7 @@ export default function App() {
   const [seed, setSeed] = useState(newSeed)
   const [showSolution, setShowSolution] = useState(false)
   const [calibration, setCalibration] = useState(false)
+  const [markers, setMarkers] = useState(true)
   const [history, setHistory] = useState<Snapshot[]>([])
 
   const pen = PENS.find((p) => p.id === penId) ?? MARKER
@@ -107,7 +108,7 @@ export default function App() {
   )
 
   const styleSeed = hashSeed(seed)
-  const base = { paper, stroke: pen.stroke, style, styleSeed }
+  const base = { paper, stroke: pen.stroke, style, styleSeed, markers }
 
   const svg = useMemo(
     () =>
@@ -120,7 +121,7 @@ export default function App() {
           `${style.label} · seed ${seed}`,
       }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [maze, paper, pen, style, styleSeed, seed, showSolution, calibration],
+    [maze, paper, pen, style, styleSeed, seed, showSolution, calibration, markers],
   )
 
   // A second render without the answer or the ruler, so the filmstrip shows the
@@ -128,7 +129,7 @@ export default function App() {
   const plate = useMemo(
     () => renderSvg(maze.grid, maze.maze, maze.solution, base),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [maze, paper, pen, style, styleSeed],
+    [maze, paper, pen, style, styleSeed, markers],
   )
 
   const key = `${paper.id}|${penId}|${level}|${shapeId}|${styleId}|${seed}`
@@ -286,12 +287,15 @@ export default function App() {
             ))}
           </Group>
 
-          <Group label="Show" columns={2}>
+          <Group label="Show" columns={3}>
             <Chip on={showSolution} onClick={() => setShowSolution((v) => !v)}>
               Answer
             </Chip>
             <Chip on={calibration} onClick={() => setCalibration((v) => !v)}>
               Ruler
+            </Chip>
+            <Chip on={markers} onClick={() => setMarkers((v) => !v)}>
+              Mouse
             </Chip>
           </Group>
 
