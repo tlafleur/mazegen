@@ -483,3 +483,38 @@ body {
   cursor: pointer;
   touch-action: manipulation;
 }
+
+/* --- word mazes --- */
+
+.word {
+  display: block;
+  margin-bottom: 14px;
+}
+
+.word input {
+  width: 100%;
+  min-height: 52px;
+  padding: 0 14px;
+  font: inherit;
+  font-size: 20px;
+  font-weight: 650;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  border: 2px solid var(--line);
+  border-radius: 14px;
+  background: var(--sunken);
+  color: var(--ink);
+}
+
+.word input::placeholder {
+  font-weight: 500;
+  letter-spacing: normal;
+  text-transform: none;
+  color: var(--muted);
+}
+
+.word input:focus {
+  outline: none;
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}

@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
-import { generateMaze, shapesFor } from './generate'
+import { baseGridFor, generateMaze, shapesFor } from './generate'
 import { renderPdf, renderSvg } from './render/svg'
 import { sheetOrigin } from './render/sheet'
 import { polylineCommands, toSvgPath } from './render/path'
 import { follow, startTrail, type Trail } from './core/trail'
 import type { Point } from './core/grid/planar'
 import { cellsThumbnail, shapeIcon, styleThumbnail } from './render/thumbnail'
+import { wordShape } from './render/word'
 import { STYLES } from './render/style'
 import { RECIPES, type Level } from './core/difficulty'
 import { hashSeed } from './core/rng'
@@ -103,6 +104,7 @@ export default function App() {
   const [penId, setPenId] = useState(MARKER.id)
   const [shapeId, setShapeId] = useState('rectangle')
   const [cellsId, setCellsId] = useState(SQUARES.id)
+  const [word, setWord] = useState('')
   const [styleId, setStyleId] = useState('doodle')
   const [seed, setSeed] = useState(newSeed)
   const [showSolution, setShowSolution] = useState(false)
@@ -114,7 +116,23 @@ export default function App() {
   const pen = PENS.find((p) => p.id === penId) ?? MARKER
   const cells = CELL_KINDS.find((c) => c.id === cellsId) ?? SQUARES
   const shapes = useMemo(() => shapesFor(paper, pen, cells), [paper, pen, cells])
-  const shape = shapes.find((s) => s.id === shapeId) ?? (shapes[0] as (typeof shapes)[number])
+  const picked = shapes.find((s) => s.id === shapeId) ?? (shapes[0] as (typeof shapes)[number])
+
+  // A word, when there is one, is a shape like any other — nothing downstream
+  // learns that this one came from typing. Sized against the bare grid rather
+  // than a carved maze, since all it needs is how many cells fit across.
+  const box = useMemo(() => baseGridFor(paper, pen, cells), [paper, pen, cells])
+  const fromWord = useMemo(() => {
+    if (word.trim() === '') return null
+    return wordShape(word, {
+      cellsAcross: box.width / box.pitch,
+      aspect: box.height / box.width,
+    })
+  }, [word, box])
+
+  // Falls back to the picked shape for an empty box, and for a word the browser
+  // could not draw.
+  const shape = fromWord ?? picked
   const style = STYLES.find((s) => s.id === styleId) ?? (STYLES[0] as (typeof STYLES)[number])
   const activePreset = presetFor(level, penId)
 
@@ -247,7 +265,7 @@ export default function App() {
     [maze, paper, pen, style, styleSeed, markers],
   )
 
-  const key = `${paper.id}|${penId}|${level}|${shapeId}|${styleId}|${cellsId}|${seed}`
+  const key = `${paper.id}|${penId}|${level}|${shape.id}|${styleId}|${cellsId}|${seed}`
   useEffect(() => {
     setHistory((prev) => {
       // Never reorder: a maze a child is looking for should stay where they
@@ -410,6 +428,21 @@ export default function App() {
             </Chip>
           ))}
         </Group>
+
+        <label className="word">
+          <span className="group-label">Or a word</span>
+          <input
+            type="text"
+            value={word}
+            onChange={(e) => setWord(e.target.value.slice(0, 12))}
+            placeholder="type a name"
+            inputMode="text"
+            autoCapitalize="characters"
+            autoCorrect="off"
+            spellCheck={false}
+            aria-label="Make a maze out of a word"
+          />
+        </label>
 
         <Group label="Cells" columns={2}>
           {CELL_KINDS.map((c) => (

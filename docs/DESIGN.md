@@ -283,6 +283,43 @@ what it is picking is worse than no icon at all.
 
 - **Polar** — a third `BaseGrid`, with rings subdivided as they grow outward.
 
+## 6a. Word mazes
+
+Type a name; the maze is carved into its letters. The word becomes a `Shape` like any other, so
+nothing downstream learns that this one came from typing.
+
+Drawn with a canvas rather than 26 hand-authored glyphs, because a child should be able to type any
+word rather than pick from a list. Only the rasterising touches the DOM; the mask, the dilation, the
+joining and the line-breaking are pure and tested without a browser.
+
+Four things had to be got right, and three of them were found by looking at the output rather than
+by reasoning about it.
+
+**Dilate by what the letters are short of, not by a fixed amount.** A letter at its natural weight
+has limbs one or two cells thick, which is a line rather than a corridor. The first version dilated
+by a radius derived from the cell size, and SAM at pencil density came out as a solid black slab —
+the counters of A closed, the gaps between letters filled. It now measures the median run of ink per
+row, which for capitals is close to the stem width, and grows only by the shortfall, never by more
+than a third of what is already there.
+
+**Letters are separate components, and `MaskedGrid` keeps only the largest.** Without joining them a
+three-letter name is a maze of one letter. Each band of ink gets a thin bar along its foot, where a
+capital already ends, so it reads as a line the word stands on.
+
+**A connector has to be more than one cell across.** The mask is sampled at cell centres, so a
+feature a single cell wide can fall between two of them and contribute nothing. MAZE came out as
+"MA" with a stub hanging off it: the bridge to the second line existed in the bitmap and was one
+pixel wide, because the loop index shadowed the variable holding its thickness. Bars are 1.4 cells
+and bridges 2.6.
+
+**One line wastes the page.** A four-letter word set across a portrait sheet leaves four fifths of
+it blank and the letters too small to hold a maze. The word is broken into whichever number of lines
+gives a block closest to the shape of the page — for MAZE that is two lines of two, which roughly
+doubles the letter size.
+
+The honest limit: word mazes want pencil or fine cells. At marker size a four-letter word has about
+five cells per limb to work with, and at crayon size it has three.
+
 ## 6. Shape
 
 A shape is a mask: a test for whether a point is inside, evaluated at each cell centre. Cells
