@@ -379,12 +379,25 @@ The preset cards, the filmstrip and the preview together put roughly 700 kB of S
 the default settings. Comfortable, but it is the reason the cards are cropped and the filmstrip is
 capped at six.
 
-### Still to come
+### Offline
 
-Offline. The manifest gets the app installed and full-screen; a service worker is what makes it
-work with no network. Worth doing with `vite-plugin-pwa` rather than by hand — a hand-rolled worker
-that gets cache versioning wrong strands users on a stale build, which is a worse failure than
-having no offline support yet.
+The whole app is a few hundred kilobytes and makes no network calls of its own, so it precaches
+entirely — genuine offline use rather than partial. `vite-plugin-pwa` generates the worker;
+hand-rolling one risks getting cache versioning wrong, which strands people on a stale build.
+
+`registerType: 'autoUpdate'`, so there is no update prompt. Asking a child whether to install a new
+version is noise, and the alternative — leaving an old build in the cache — is the failure the
+worker exists to prevent.
+
+Verified end to end rather than assumed: with the network cut and a hard reload, the app renders a
+maze from cache, and a fetch to an uncached URL fails, which proves the worker is serving rather
+than the HTTP layer.
+
+A broken worker fails silently — the build succeeds, the app works online, and only someone without
+a network finds out. `scripts/check-pwa.mjs` runs as part of `npm run build` and fails if any
+hashed bundle is missing from the precache list, if the app shell or icons are absent, if outdated
+caches are not cleaned up, or if the manifest stops declaring `standalone`. Its own failure path was
+checked by tampering with a built worker.
 
 ## 9. Testing
 

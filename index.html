@@ -6,7 +6,9 @@
     <title>mazegen</title>
     <meta name="description" content="Printable mazes, sized for paper and for the hand holding the crayon." />
 
-    <link rel="manifest" href="./manifest.webmanifest" />
+    <!-- The manifest link and the service-worker registration are injected at
+         build time by vite-plugin-pwa; the tags below are the ones it does not
+         handle. -->
     <meta name="theme-color" content="#1d4ed8" />
 
     <!-- iOS ignores the manifest for home-screen behaviour and reads these
