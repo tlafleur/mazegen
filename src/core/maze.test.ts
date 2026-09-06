@@ -64,9 +64,14 @@ describe('SquareGrid', () => {
     expect(total).toBe(g.edgeCount * 2)
   })
 
-  it('draws every boundary face except the two openings', () => {
+  it('exposes every face of a cell', () => {
     const g = new SquareGrid(15, 21, 12)
-    expect(g.boundarySegments()).toHaveLength(2 * 15 + 2 * 21 - 2)
+    const topLeft = g.cellAt(0, 0)
+    // North and west are the edge of the grid; east and south are not.
+    expect(g.neighbourAcross(topLeft, 0)).toBe(-1)
+    expect(g.neighbourAcross(topLeft, 3)).toBe(-1)
+    expect(g.neighbourAcross(topLeft, 1)).toBe(g.cellAt(1, 0))
+    expect(g.neighbourAcross(topLeft, 2)).toBe(g.cellAt(0, 1))
   })
 })
 

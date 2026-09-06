@@ -111,66 +111,213 @@ Labelling these by drawing tool rather than by a number is more useful to a pare
 
 ### Difficulty, measured rather than assumed
 
-Most generators change the grid size and call that difficulty. Better: define difficulty from properties of the generated maze, then verify it.
+Most generators change the grid size and call that difficulty. Better: define difficulty from
+properties of the generated maze, then verify it. Everything below was measured during phase 1
+and corrects the sketch this section originally carried.
 
 Given the solution path `P` from start to end:
 
 - `L` — cells on the solution path
-- `J` — cells on `P` with degree ≥ 3, i.e. points where a wrong turn is available
-- `d_i` — depth of each wrong branch hanging off `P`, until it dead-ends or rejoins
-- `D̄`, `Dmax` — mean and maximum wrong-branch depth
-- `T = L / (rows + cols)` — tortuosity
+- `J` — cells on `P` where at least one opening *leaves* `P`. Stricter than "degree ≥ 3": a
+  third opening that rejoins the route is a shortcut, not a chance to go wrong.
+- `D̄` — mean depth of the off-route regions hanging off `P`, measured per connected region
+- `maxDeadEndRun` — longest corridor from a dead end back to the first junction
 
-A maze with 30 decision points whose wrong branches die after two cells is easy. A maze with 12 decision points whose wrong branches run 20 cells deep is hard. So the primary term is roughly:
+**The score is expected work, normalized by size:**
 
 ```
-score = J · log(1 + D̄)      (plus a size term)
+score = (L + J · D̄) / cells
 ```
 
-The weights need calibration, not guessing. Generate ~10k mazes across the parameter space offline, compute scores, take quintile boundaries, and store those as the level 1–5 thresholds.
+The original sketch, `J · log(1 + D̄)`, ranks the carvers backwards. Measured over 20 mazes on a
+21×28 grid, the recursive backtracker gives a long route with few branches (L 210, J 17) and
+Kruskal a short route with many (L 77, J 39). `J` swings 2.3× while `log(1 + D̄)` swings 1.6×, so
+decision count dominates and the formula calls the bushy maze the hard one. It also discards
+route length, which for a child with a crayon is the most concrete work on the page. With the
+corrected formula: backtracker 0.755, Kruskal 0.464, Wilson's 0.455, sidewinder 0.410.
 
-Generation then becomes: sample parameters for the requested level, generate, score, accept if inside the band, otherwise retry. Cap at ~20 attempts and take the closest. Generation costs microseconds, so this is affordable, and it makes "difficulty 2" mean the same thing across every shape, grid, and cell size.
+**Two different depth measures, and the difference matters.** *Branch depth* is how far off the
+route a solver can wander. *Dead-end run* is how far they must retrace once they discover they
+are wrong. The second is what frustrates a child, so it is the one that gets capped.
 
 ### Algorithm choice is a difficulty input
 
-Carving algorithms have distinct characters, and this is the main non-size difficulty control:
-
 | Algorithm | Character | Use |
 |---|---|---|
-| Sidewinder | Strong upward bias, obvious strategy | Easiest levels |
-| Kruskal / Prim | Bushy, short dead ends everywhere | Easy–medium, busy texture |
-| Wilson's | Uniform spanning tree, no bias or texture | Medium |
-| Recursive backtracker | Long winding corridors, deep dead ends | Hard, and the most satisfying to draw |
-| Eller's | Row-by-row, distinct horizontal texture | Variety |
+| Sidewinder | Unbroken top row, so an obvious strategy | Level 1 |
+| Kruskal | Bushy, short dead ends everywhere | Level 2 |
+| Wilson's | Uniform spanning tree, no bias or texture | Held back as a user choice |
+| Recursive backtracker | Long winding corridors, deep dead ends | Levels 3–5, by braid amount |
+
+Sidewinder, Kruskal and Wilson's score within a few percent of one another, so they cannot supply
+five separated levels between them. The usable range comes from the backtracker braided by
+varying amounts, which spans 0.35 to 0.64 at fine-pen size on its own.
+
+Sidewinder's real easiness is invisible to any structural measure — its top corridor hands the
+solver a plan — so it is pinned to level 1 by name rather than chosen by score.
+
+### The levels
+
+| Level | Carver | Braid | Dead-end cap |
+|---|---|---|---|
+| 1 Gentle | Sidewinder | 0.3 | 3 |
+| 2 Easy | Kruskal | 0 | 4 |
+| 3 Medium | Backtracker | 0.3 | — |
+| 4 Hard | Backtracker | 0.1 | — |
+| 5 Fiendish | Backtracker | 0 | — |
 
 ### "Hard to get stuck", concretely
 
-Two post-processing steps, both operating on the graph:
+1. **Braiding.** Open a fraction of dead ends so there is a way onward.
+2. **Dead-end depth capping.** Open a wall at the tip of any corridor longer than `k`, so there
+   is never much to retrace. Level 1 caps at three cells.
 
-1. **Braiding.** Remove a fraction of dead ends by opening one extra wall at each. A braided maze always offers a way forward, which removes the main source of frustration — being blocked and having to erase. Braid ratio scales inversely with difficulty.
-2. **Dead-end depth capping.** Repeatedly find the deepest dead-end branch and open a wall at its tip to a neighbour, until `Dmax ≤ k`. At level 1, set `k = 3`, so a child cannot go more than three cells wrong before finding a way on.
+**Braiding is U-shaped, not monotonic** — the plan originally had this wrong. Measured on a 21×28
+grid, sidewinder scores 0.430 unbraided, falls to 0.357 at braid 0.2, and climbs back to 0.569 at
+0.8. Kruskal does the same. Opening a few dead ends shortens the route and thins the choices;
+opening most of them merges the whole off-route area into one connected mass a solver can wander
+deep into, and `D̄` nearly doubles.
 
-Note that braiding makes a maze *easier to move through* and *harder to solve optimally*, since dead-end-filling no longer works. Both effects are wanted here. The exact ratio for young children should be tuned against real children, not chosen from theory.
+The reason is worth stating plainly: **dead ends are feedback.** A wall tells a child they are
+wrong. Remove them all and the signal goes with them, leaving open space and no sense of
+progress. The measured minimum sits near 0.2–0.4, so no level braids beyond that — the opposite
+of this plan's original "braid heavily for the youngest".
+
+### What difficulty cannot promise
+
+Normalizing by cell count does not make levels comparable across cell sizes, and no other
+normalizer does either. Sidewinder's route length scales with the perimeter (√cells) and the
+backtracker's with the area, so dividing by cell count over-corrects the first and roughly fits
+the second: sidewinder at braid 0.3 scores 0.474 on crayon and 0.170 on fine pen, while the
+backtracker scores 0.814 and 0.682.
+
+So the promise is narrower and honest: **at whatever cell size you picked, level 1 < 2 < 3 < 4 < 5.**
+That holds at all eight paper × cell-size combinations and is enforced by test.
+
+One limit falls out of it. On the crayon grid (315 cells) the braid lever saturates — the
+backtracker scores the same at braid 0.2 and 0.3, because there are too few dead ends to open and
+too little route to shorten — so levels 3 to 5 compress. Level 5 is 4.1× level 1 at fine pen but
+only 1.75× on crayon. That is a limit of how much maze fits on a page at that corridor width, not
+a defect in the recipes.
 
 ## 5. Line styles
 
-All styles are pure functions of the wall geometry plus a style seed. Changing style never changes the maze topology, so the solution stays identical — worth stating as an invariant and testing.
+All styles are pure functions of the wall geometry plus a style seed. Changing style never changes
+the maze topology, so the solution stays identical — stated as an invariant and held by test.
 
-**Shared primitive: polyline chaining.** Walls start as segments between lattice vertices. Chain them into maximal polylines by walking through degree-2 vertices. This is the single most useful geometry step: it cuts thousands of SVG elements down to a few hundred subpaths in one `<path>`, produces correct joins, and every style below operates on polylines rather than loose segments.
+**Shared primitive: polyline chaining.** Walls start as segments between lattice vertices. Chaining
+them into maximal polylines collapses a maze from ~3070 loose segments into ~1180 subpaths in a
+single `<path>` with correct joins. Every style below operates on those polylines.
 
-1. **Straight** — the polylines as-is. Optionally `stroke-linejoin: round` for a softer look.
-2. **Rounded** — at each interior vertex `a→b→c`, cut back by `r = min(r_max, |ab|/2, |bc|/2)` and insert a quadratic Bézier. Robust, ~20 lines.
-3. **Zigzag / jitter** — displace the **lattice vertices**, not the wall segments. Offset is a pure function of `(vx, vy, seed)`, so every wall touching a vertex moves identically and walls never separate. Clamp the offset to 0.2 × pitch; worst-case corridor is then `0.6 × pitch − stroke`, which at 12 mm pitch is 6.2 mm — still wide enough for a crayon. That bound is a guarantee by construction, and the clamp gets a test.
-4. **Sketch** — draw each polyline twice with small independent perturbations and slight end overshoot. Hand-drawn look without a dependency, ~40 lines. Costs more ink.
-5. **Cave** — render the *passages* instead of the walls. Stroke the passage graph (cell centre to cell centre) at width `pitch − gap` in black with round caps and joins, then stroke the same path at `pitch − gap − 2·strokeWidth` in white on top. The result is outlined organic tunnels with no boolean geometry required. Two paths total.
+### Shipped in phase 1
+
+| Style | Rounding | Jitter | Look |
+|---|---|---|---|
+| Classic | 0 | 0 | Crisp and square |
+| Soft | 0.35 | 0 | Rounded corners, nothing else |
+| Doodle | 0.35 | 0.14 | Hand-drawn — the v1 default |
+| Wonky | 0.25 | 0.20 | As loose as the corridor guarantee allows |
+
+Classic falls out as the case where both settings are zero, exactly as planned: it ships as an
+alternate style rather than as separate work.
+
+**Rounding.** At each interior vertex `a→b→c`, cut back by `r = min(radius, |ab|/2, |bc|/2)` and
+insert a quadratic Bézier. The half-length cap matters — a radius wider than the segment pulls the
+wall away from where it belongs and lets adjacent corners eat into each other.
+
+Collinear runs are skipped rather than rounded. Chaining emits every lattice vertex a wall passes
+through, so a straight stretch arrives as several collinear points; rounding each would spend three
+path commands per cell drawing a straight line.
+
+Closed rings — the outline of a shape — are rounded all the way round including the join, or the
+outline has one flat corner wherever the walk happened to start.
+
+**Jitter displaces lattice vertices, not wall segments.** The displacement is a pure function of the
+vertex id and the seed, so the four walls meeting at a vertex all ask the same question and get the
+same answer. Perturbing segments independently would tear the maze open at every corner.
+
+The magnitude is capped at **0.2 × pitch, clamped in the renderer rather than trusted from the
+style**, so no style can define away the guarantee. Two parallel walls sit one pitch apart and each
+may move that far toward the other, so the narrowest a corridor becomes is `0.6 × pitch` minus the
+stroke — 6.2 mm of clear space at crayon size. Guaranteed by construction; the clamp is what the
+test checks.
+
+One consequence worth noting: the entrance and exit are midpoints of boundary faces, so they have
+to be computed from the *displaced* vertices. Taking the fixed midpoint leaves the solution line
+detached from its own gap in the wall.
+
+**Cost.** Rounding roughly doubles the path data and jitter adds a little more: a fine-pen maze goes
+from 62 kB (Classic) to 144 kB (Doodle), rendering in 8 ms. Inline in the DOM that is not a problem,
+and it stays well inside a frame.
+
+### Still to come
+
+- **Sketch** — each polyline drawn twice with small independent perturbations and slight end
+  overshoot. Hand-drawn without a dependency, ~40 lines. Costs more ink.
+- **Cave** — render the *passages* instead of the walls. Stroke the passage graph at width
+  `pitch − gap` in black with round caps and joins, then stroke the same path at
+  `pitch − gap − 2·strokeWidth` in white on top. Outlined organic tunnels, no boolean geometry, two
+  paths total.
 
 ## 6. Shape
 
-A shape is a mask: a predicate over cell centres, derived from an SVG path, a text glyph, or a thresholded image. Cells outside the mask are removed from the graph before carving. After masking, keep only the largest connected component and discard strays.
+A shape is a mask: a test for whether a point is inside, evaluated at each cell centre. Cells
+outside it are removed from the graph *before* carving, so a carver sees a smaller graph rather
+than a rectangle with holes and needs no knowledge of shapes at all. A rectangle is the same class
+with a mask that admits everything, so there is one implementation of outlines and openings rather
+than two.
 
-Start and end placement for arbitrary shapes: run double-BFS to find the graph diameter and open the boundary at those two cells. That gives a sensible, far-apart pair for any outline without hand-authoring.
+Removing cells before carving also matters for difficulty: the score divides by cell count, and
+that has to be the cells actually in the maze, not the bounding box.
 
-Shape library for v1: rectangle, rounded rectangle, circle, oval, heart, star. Phase 2 adds objects (rocket, dinosaur, fish, cupcake) and **letter mazes** — type a child's initial or name and get a maze in that shape. Letter masks are near-free once glyph rasterization exists, and they are a strong reason for a child to want a particular maze.
+**Mask coordinates** are centred on the grid and scaled uniformly so the *shorter* axis spans
+[-1, 1]. Uniform scaling is what keeps a circle a circle — Letter's live area is 0.75 wide-to-tall
+and A4's is 0.68, so a mask written against a unit square prints visibly different on the two
+papers.
+
+**Only the largest connected piece survives.** A thin shape can leave islands, and a maze in two
+pieces is unsolvable.
+
+**Entrance and exit** come from a double BFS over the outline cells, run on the *uncarved*
+adjacency so they are a property of the shape and stay put however the maze is carved. The opening
+is cut into whichever face of that cell points most directly away from the middle of the grid, so
+it lands on the outside of a star's point rather than in its armpit. On a rectangle this reproduces
+the obvious answer: opposite corners.
+
+### The library, and what it costs
+
+| Shape | Coverage of the page | Cells at marker (21×28) |
+|---|---|---|
+| Page | 100% | 588 |
+| Rounded | 98% | 576 |
+| Oval | 78% | 456 |
+| Circle | 59% | 346 |
+| Heart | 52% | 306 |
+| Star | 34% | 200 |
+
+Two things went wrong here and are worth recording.
+
+**The heart was clipping.** The curve `(x² + y² - 1)³ - x²y³ ≤ 0` is neither centred nor a unit
+shape: sampled, its bounding box is x ±1.138 and y −1.0 to 1.2. Scaled as though it were a unit
+circle it runs past the page edge and prints with its sides sliced off — while *appearing* fine,
+because clipping raised its page coverage to 75%. The scale and the vertical offset both come from
+that measured box.
+
+**A textbook star is too thin to be a maze.** At the usual inner radius of 0.42 the points narrow
+to single cells: no choice to make, and visually a spike stuck on the side of the shape. At 0.6 the
+star covers 34% of the page rather than 23%, with about one such cell per point instead of five,
+and still plainly reads as a star. Both properties are held by test.
+
+### Sidewinder cannot run on a shape
+
+Sidewinder carves east along a whole row and then north out of it, so ragged rows rule it out — the
+`RowStructured` interface exists to make that a compile-time fact rather than a runtime surprise.
+Level 1 therefore carries a fallback, Kruskal at a higher braid, which measures below level 2 and
+keeps the ladder intact on every shape.
+
+Phase 2 adds objects (rocket, dinosaur, fish, cupcake) and **letter mazes** — type a child's
+initial and get a maze in that shape. Both are masks like any other; letters need only glyph
+rasterization, and the polygon mask already in place covers the objects.
 
 ## 7. Printing — the main risk
 
@@ -192,23 +339,65 @@ Also needed: a solution toggle (no answer / answer overlaid / answer on page 2).
 
 Principles, each with a concrete mechanism:
 
-1. **Never a blank state.** The app opens with a finished, printable maze already on screen. No configuration form stands between the user and a result.
-2. **Pictures, not words, and no numbers at all.** Preset cards show a real thumbnail generated at those settings. Difficulty is shown as one to five stars or as character sizes, never as a number. Cell size is shown as a picture of a crayon, marker, pencil, or pen. A pre-reader should be able to operate the entire primary flow.
-3. **Stepped chips, not sliders.** Sliders are precision instruments and children are not precise. Every control is 3–5 large discrete options at a minimum of 60 pt, well above the 44 pt HIG floor, with generous spacing.
-4. **Nothing is destructive.** A large "New maze" button reshuffles the seed, and a filmstrip of the last ~10 mazes lets a child recover one they liked. The main way to lose in a generator app is losing the good result; this removes it.
-5. **Live preview.** Settings apply immediately. Generation is sub-millisecond at these sizes; move to a Web Worker only if measurement shows a dropped frame.
-6. **No typing** anywhere in the primary flow. Keyboards cover half the screen and children type slowly. The optional name-maze feature is the one exception, and it belongs in the grown-up area.
-7. **Both orientations.** Landscape puts the preview beside the controls; portrait puts it above them.
-8. **Touch-resistant preview.** The preview ignores drags outside of play mode, so a hand resting on the screen does nothing.
-9. **Standalone PWA display mode.** `display: standalone` in the manifest removes Safari's chrome, so there is no address bar for a child to tap out of the app.
-10. **A grown-up area, unobtrusive rather than locked.** Paper size, margins, printer settings, and name mazes live behind a small, plainly-labelled entry point. Not a password gate — just somewhere a child will not wander by accident.
+1. **Never a blank state.** The app opens with a finished, printable maze already on screen.
+2. **Pictures, not words, and no numbers.** Preset cards show a real maze generated at those
+   settings; difficulty is filled dots; shapes and line styles are drawn, not named. A pre-reader
+   can operate the whole primary flow. The words on the cards are for whoever is helping.
+3. **One tap sets difficulty and cell size together.** They are separate axes in the engine, and
+   deliberately so, but a child should not have to reason about two things to get a maze. The
+   grown-up area exposes them apart.
+4. **Stepped chips, not sliders**, at a 60 px minimum — above the 44 pt HIG floor.
+5. **Nothing is destructive.** A filmstrip keeps the last six mazes, and tapping one restores it
+   whole. It never reorders: a maze a child is looking for should stay where they last saw it.
+6. **No typing** anywhere in the primary flow.
+7. **Both orientations.** Landscape puts the controls beside the maze; portrait puts them below and
+   spreads the cards across the width.
+8. **The preview ignores pointers**, so a hand resting on it does nothing.
+9. **Standalone display**, so there is no address bar to tap out of.
+10. **A grown-up area** — paper, individual difficulty and cell size, answer, ruler, metrics —
+    behind a plainly labelled disclosure. Not a lock; an adult should never have to hunt for it.
 
-### The print sheet is not child-operable
+### Three things the build corrected
 
-Worth stating plainly, because it constrains the design: tapping print hands control to the iOS system print sheet, which is dense, text-heavy, and requires choosing a printer. No amount of work on our side changes that. So the realistic division of labour is that the child designs and an adult completes the print. Two implications:
+**A preset card cannot show a whole page.** Shrunk to thumbnail size, every cell size becomes the
+same grey texture, so "Big kid", "Tricky" and "Fiendish" were indistinguishable — which defeats the
+one job a picture-led card has. The cards show a *cropped window* onto the middle of the sheet
+instead, at a scale where individual cells resolve, so chunky and dense differ visibly rather than
+by shade.
 
-- The print button should produce a queued, obviously-finished result the adult can act on later, not require the adult to be standing there at the moment of choice. A "print queue" of chosen mazes the adult flushes in one go fits the actual household situation better than one-tap-print-now, and it feeds directly into the booklet export in §10.
-- Because printing needs an adult and a printer, **on-screen solving is what the child will actually do most of the time.** That moves it from a nice-to-have to a phase 2 feature. Mechanically it is easy and naturally forgiving: track which cell the finger is in and only permit movement to adjacent cells sharing a passage, snapping the drawn line to cell centres with rounded joins. The cell itself is the tap target, so at crayon size that is a 12 mm target — larger than any button in the app.
+**The primary actions cannot be sticky over the scroll area.** Pinning New maze and Print with
+`position: sticky` hid whatever scrolled under them — the line-style picker sat permanently behind
+the Print button. The panel is a scrolling body with a fixed footer instead.
+
+**iOS ignores the manifest for home-screen behaviour.** `display: standalone` alone still opens in
+Safari with an address bar. The `apple-mobile-web-app-*` meta tags are what actually launch it
+chrome-free, and the touch icon has to be a PNG — iOS will not take the SVG.
+
+### Cost
+
+The preset cards, the filmstrip and the preview together put roughly 700 kB of SVG in the DOM at
+the default settings. Comfortable, but it is the reason the cards are cropped and the filmstrip is
+capped at six.
+
+### Offline
+
+The whole app is a few hundred kilobytes and makes no network calls of its own, so it precaches
+entirely — genuine offline use rather than partial. `vite-plugin-pwa` generates the worker;
+hand-rolling one risks getting cache versioning wrong, which strands people on a stale build.
+
+`registerType: 'autoUpdate'`, so there is no update prompt. Asking a child whether to install a new
+version is noise, and the alternative — leaving an old build in the cache — is the failure the
+worker exists to prevent.
+
+Verified end to end rather than assumed: with the network cut and a hard reload, the app renders a
+maze from cache, and a fetch to an uncached URL fails, which proves the worker is serving rather
+than the HTTP layer.
+
+A broken worker fails silently — the build succeeds, the app works online, and only someone without
+a network finds out. `scripts/check-pwa.mjs` runs as part of `npm run build` and fails if any
+hashed bundle is missing from the precache list, if the app shell or icons are absent, if outdated
+caches are not cleaned up, or if the manifest stops declaring `standalone`. Its own failure path was
+checked by tampering with a built worker.
 
 ## 9. Testing
 
@@ -218,6 +407,9 @@ Worth stating plainly, because it constrains the design: tapping print hands con
 - **Difficulty calibration**: generated mazes at level *n* fall in the expected metric band across a large sample.
 - **Print geometry**: rendered bounding box fits the printable area for every shape and grid.
 - **Golden files** on a fixed seed set.
+- **Architectural boundaries**: `core/` imports nothing outside itself and never names a DOM global.
+  The rule is easy to state and easy to erode one convenient import at a time, so it is checked
+  rather than remembered — it caught a mistake during the line-style work.
 
 Vitest, running against `core/` in Node with no browser needed.
 

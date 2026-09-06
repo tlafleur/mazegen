@@ -31,3 +31,23 @@ export interface Maze {
   readonly start: CellId
   readonly end: CellId
 }
+
+/**
+ * Extra structure some carvers need beyond a bare graph.
+ *
+ * Sidewinder and Eller's are defined in terms of rows and columns — they carve
+ * east along a run and then north out of it — so they cannot run on a topology
+ * that has neither, such as the polar grid planned for phase 2. Declaring that
+ * as a separate interface keeps `Topology` honest: a carver that takes only
+ * `Topology` really does work on any cell complex, and one that needs more says
+ * so in its signature.
+ */
+export interface RowStructured {
+  readonly rows: number
+  readonly cols: number
+  cellAt(col: CellId, row: CellId): CellId
+  /** Edge to the cell on the right, or -1 at the right-hand edge. */
+  edgeEast(cell: CellId): EdgeId
+  /** Edge to the cell above, or -1 on the top row. */
+  edgeNorth(cell: CellId): EdgeId
+}

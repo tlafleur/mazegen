@@ -1,12 +1,7 @@
-import type { CellId, EdgeId, Topology } from '../types'
+import type { CellId, EdgeId, RowStructured, Topology } from '../types'
+import { EAST, NORTH, SOUTH, type Point, type Segment } from './planar'
 
-export interface Point {
-  readonly x: number
-  readonly y: number
-}
-
-/** A wall segment, as a pair of lattice-vertex ids. */
-export type Segment = readonly [number, number]
+export type { Point, Segment }
 
 /**
  * A rectangular grid of square cells.
@@ -19,7 +14,7 @@ export type Segment = readonly [number, number]
  * Coordinates are millimetres with the origin at the maze's top-left corner.
  * Placing the maze on a page is the renderer's job.
  */
-export class SquareGrid implements Topology {
+export class SquareGrid implements Topology, RowStructured {
   readonly cellCount: number
   readonly edgeCount: number
   readonly vertexCount: number
@@ -87,6 +82,20 @@ export class SquareGrid implements Topology {
     return out
   }
 
+  // --- RowStructured, for carvers that work in rows and columns ---
+
+  edgeEast(cell: CellId): EdgeId {
+    const c = this.colOf(cell)
+    if (c === this.cols - 1) return -1
+    return this.rowOf(cell) * (this.cols - 1) + c
+  }
+
+  edgeNorth(cell: CellId): EdgeId {
+    const r = this.rowOf(cell)
+    if (r === 0) return -1
+    return this.hCount + (r - 1) * this.cols + this.colOf(cell)
+  }
+
   // --- geometry ---
 
   vertexAt(vc: number, vr: number): number {
@@ -121,36 +130,46 @@ export class SquareGrid implements Topology {
     return [this.vertexAt(c, r + 1), this.vertexAt(c + 1, r + 1)]
   }
 
-  /**
-   * The outer rectangle, one segment per boundary cell face, minus the two
-   * openings.
-   *
-   * Phase 0 is rectangles only, so start and end are the top-left and
-   * bottom-right corners. Arbitrary outlines need the double-BFS placement
-   * described in docs/DESIGN.md §6.
-   */
-  boundarySegments(): Segment[] {
-    const out: Segment[] = []
-    for (let c = 0; c < this.cols; c++) {
-      if (c !== 0) out.push([this.vertexAt(c, 0), this.vertexAt(c + 1, 0)])
-      if (c !== this.cols - 1) {
-        out.push([this.vertexAt(c, this.rows), this.vertexAt(c + 1, this.rows)])
-      }
-    }
-    for (let r = 0; r < this.rows; r++) {
-      out.push([this.vertexAt(0, r), this.vertexAt(0, r + 1)])
-      out.push([this.vertexAt(this.cols, r), this.vertexAt(this.cols, r + 1)])
-    }
-    return out
+  /** The cell across a face, or -1 when that face is the edge of the grid. */
+  neighbourAcross(cell: CellId, dir: number): CellId {
+    const c = this.colOf(cell)
+    const r = this.rowOf(cell)
+    if (dir === NORTH) return r > 0 ? cell - this.cols : -1
+    if (dir === EAST) return c < this.cols - 1 ? cell + 1 : -1
+    if (dir === SOUTH) return r < this.rows - 1 ? cell + this.cols : -1
+    return c > 0 ? cell - 1 : -1
   }
 
-  /** Where the solution line crosses the entrance, on the top edge. */
-  entrancePoint(): Point {
-    return { x: 0.5 * this.pitch, y: 0 }
+  /** The edge across a face, or -1 when that face is the edge of the grid. */
+  edgeAcross(cell: CellId, dir: number): EdgeId {
+    const c = this.colOf(cell)
+    const r = this.rowOf(cell)
+    if (dir === NORTH) return r > 0 ? this.hCount + (r - 1) * this.cols + c : -1
+    if (dir === EAST) return c < this.cols - 1 ? r * (this.cols - 1) + c : -1
+    if (dir === SOUTH) return r < this.rows - 1 ? this.hCount + r * this.cols + c : -1
+    return c > 0 ? r * (this.cols - 1) + (c - 1) : -1
   }
 
-  /** Where the solution line crosses the exit, on the bottom edge. */
-  exitPoint(): Point {
-    return { x: (this.cols - 0.5) * this.pitch, y: this.height }
+  /** Always available here: a bare rectangle has nothing but full rows. */
+  rowStructured(): SquareGrid {
+    return this
+  }
+
+  /** The two lattice vertices bounding one face of a cell. */
+  faceSegment(cell: CellId, dir: number): Segment {
+    const c = this.colOf(cell)
+    const r = this.rowOf(cell)
+    if (dir === NORTH) return [this.vertexAt(c, r), this.vertexAt(c + 1, r)]
+    if (dir === EAST) return [this.vertexAt(c + 1, r), this.vertexAt(c + 1, r + 1)]
+    if (dir === SOUTH) return [this.vertexAt(c, r + 1), this.vertexAt(c + 1, r + 1)]
+    return [this.vertexAt(c, r), this.vertexAt(c, r + 1)]
+  }
+
+  /** Midpoint of one face of a cell. */
+  faceMidpoint(cell: CellId, dir: number): Point {
+    const [a, b] = this.faceSegment(cell, dir)
+    const pa = this.vertexPos(a)
+    const pb = this.vertexPos(b)
+    return { x: (pa.x + pb.x) / 2, y: (pa.y + pb.y) / 2 }
   }
 }
