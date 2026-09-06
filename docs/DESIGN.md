@@ -250,14 +250,75 @@ detached from its own gap in the wall.
 from 62 kB (Classic) to 144 kB (Doodle), rendering in 8 ms. Inline in the DOM that is not a problem,
 and it stays well inside a frame.
 
+### Shipped in phase 2
+
+**Sketch** — every line drawn twice, each pass wandering on its own, with the ends run slightly past
+their junctions. Note that this is the *opposite* of the jitter rule above: jitter is keyed on the
+vertex so walls meeting there agree, and a sketch pass is keyed on the pass so the two lines
+deliberately do *not*. Both wanders are charged against the same 0.2 × pitch budget, so no
+combination narrows a corridor past what the guarantee says.
+
+Two numbers came from looking at the output rather than from reasoning. A pass has to move further
+than the stroke is wide, or the two lines land on top of each other and it reads as one fat line —
+0.055 × pitch was invisible at marker size, 0.1 works. And each pass is drawn at 0.8 × the stroke
+width, because two full-weight lines half a millimetre apart still read as one line.
+
+**Cave** — the maze rendered inside out. A wide black stroke along the passage graph, then a
+narrower white one over the top: the white covers the middle and leaves the edges showing, which is
+an outlined tunnel with no boolean geometry anywhere and two paths for the whole sheet.
+
+The tunnel width cannot be taken from the pitch, which is the trap. On squares two parallel
+corridors are a whole cell apart, but on hexagons the nearest parallel pair is only √3/2 of one — so
+a tunnel sized from the pitch leaves 0.046 × pitch of white between neighbours, which is 0.18 mm at
+fine-pen density and merges two passages into one. `BaseGrid` therefore carries `passageGap`, the
+closest two passages sharing no cell can come, and a test measures it by brute force over every pair
+of segments rather than trusting the arithmetic.
+
+Adding these also caught a copy: `styleThumbnail` had its own miniature version of the drawing code,
+which knew only about rounding and jitter — so the moment Sketch and Cave existed, both icons showed
+a plain Classic maze. The icons are built by the real renderer now. An icon that can disagree with
+what it is picking is worse than no icon at all.
+
 ### Still to come
 
-- **Sketch** — each polyline drawn twice with small independent perturbations and slight end
-  overshoot. Hand-drawn without a dependency, ~40 lines. Costs more ink.
-- **Cave** — render the *passages* instead of the walls. Stroke the passage graph at width
-  `pitch − gap` in black with round caps and joins, then stroke the same path at
-  `pitch − gap − 2·strokeWidth` in white on top. Outlined organic tunnels, no boolean geometry, two
-  paths total.
+- **Polar** — a third `BaseGrid`, with rings subdivided as they grow outward.
+
+## 6a. Word mazes
+
+Type a name; the maze is carved into its letters. The word becomes a `Shape` like any other, so
+nothing downstream learns that this one came from typing.
+
+Drawn with a canvas rather than 26 hand-authored glyphs, because a child should be able to type any
+word rather than pick from a list. Only the rasterising touches the DOM; the mask, the dilation, the
+joining and the line-breaking are pure and tested without a browser.
+
+Four things had to be got right, and three of them were found by looking at the output rather than
+by reasoning about it.
+
+**Dilate by what the letters are short of, not by a fixed amount.** A letter at its natural weight
+has limbs one or two cells thick, which is a line rather than a corridor. The first version dilated
+by a radius derived from the cell size, and SAM at pencil density came out as a solid black slab —
+the counters of A closed, the gaps between letters filled. It now measures the median run of ink per
+row, which for capitals is close to the stem width, and grows only by the shortfall, never by more
+than a third of what is already there.
+
+**Letters are separate components, and `MaskedGrid` keeps only the largest.** Without joining them a
+three-letter name is a maze of one letter. Each band of ink gets a thin bar along its foot, where a
+capital already ends, so it reads as a line the word stands on.
+
+**A connector has to be more than one cell across.** The mask is sampled at cell centres, so a
+feature a single cell wide can fall between two of them and contribute nothing. MAZE came out as
+"MA" with a stub hanging off it: the bridge to the second line existed in the bitmap and was one
+pixel wide, because the loop index shadowed the variable holding its thickness. Bars are 1.4 cells
+and bridges 2.6.
+
+**One line wastes the page.** A four-letter word set across a portrait sheet leaves four fifths of
+it blank and the letters too small to hold a maze. The word is broken into whichever number of lines
+gives a block closest to the shape of the page — for MAZE that is two lines of two, which roughly
+doubles the letter size.
+
+The honest limit: word mazes want pencil or fine cells. At marker size a four-letter word has about
+five cells per limb to work with, and at crayon size it has three.
 
 ## 6. Shape
 
@@ -431,6 +492,37 @@ the Print button. The panel is a scrolling body with a fixed footer instead.
 Safari with an address bar. The `apple-mobile-web-app-*` meta tags are what actually launch it
 chrome-free, and the touch icon has to be a PNG — iOS will not take the SVG.
 
+### Solving on screen
+
+A child has an iPad far more often than a printer and an adult, so the sheet is also the game.
+Press Play, and a finger traces the route from the mouse to the cheese.
+
+The rules are in `src/core/trail.ts`, with no notion of pointers or pixels, which is what makes
+them testable without a browser:
+
+- A trail is only ever a **legal walk from the entrance**. `step` is the only way to extend one,
+  and it refuses anything that is not an adjacent cell with an open wall between.
+- An illegal move is **ignored, not rejected**. Drag across a wall and the line simply stops —
+  nothing to dismiss, nothing to undo. This is the concrete form of "hard to get stuck": there is
+  no state a child can reach that they cannot back out of.
+- Dragging back over a cell already in the trail **retraces to it**. One rule covers backing out of
+  a dead end a step at a time and a finger swept back across half the maze, and it is why the trail
+  can never contain a loop.
+- A drag is **sampled along its length**, not taken at its endpoint. Pointer events arrive far
+  apart when a finger moves quickly; at fine-pen density a single event can span several cells, and
+  without sampling a fast swipe would jump straight through a wall.
+
+The trail is a second SVG laid exactly over the sheet. That needed the preview to have a real box
+rather than `display: contents`, so the sheet is now sized from the stage's own dimensions with a
+container query — `min(100cqw, 100cqh * aspect)` — which pins the two together whichever way round
+the screen is. Playing also hides the controls: at iPad-portrait size that takes the maze from
+about 310 px wide to 760, which is the difference between a 15 px corridor and a 36 px one.
+
+Verified end to end by turning on the drawn answer, reading its path back out of the rendered SVG,
+and driving a pointer along it: the trail follows it to the exit. That one check exercises the
+overlay's coordinates, the page origin, the cell lookup and the rules at once — if any of them
+disagreed with the renderer, the finger would hit a wall that is not there.
+
 ### Cost
 
 The preset cards, the filmstrip and the preview together put roughly 700 kB of SVG in the DOM at
@@ -499,10 +591,10 @@ now, which fixes the solution's direction as well as the drawings.
    reporting 100% (§7); nothing else was worth building while the output was the wrong size. The
    writer emits the content stream directly and the result measures 100.00001 mm on a 100 mm line.
    What it cost, and the two placement bugs it exposed, are in §7.
-2. **On-screen solving.** Printing needs an adult *and* a printer, so most of the time what a child
-   does with an iPad is play. Track which cell the finger is in and permit only moves to adjacent
-   cells sharing a passage; the cell is the target, which at crayon size is 12 mm.
-3. Print queue. Hex and polar grids. Sketch and Cave styles. Letter and name mazes.
+2. ~~**On-screen solving.**~~ **Done.** Printing needs an adult *and* a printer, so most of the
+   time what a child does with an iPad is play. See §8 for what the rules turned out to be.
+3. ~~Hex grid.~~ **Done** — see below. Print queue. Polar grid. Sketch and Cave styles. Letter and
+   name mazes.
 
 **Phase 3**
 Batch booklet export — "20 pages, increasing difficulty" as one PDF, nearly free once the writer
@@ -520,6 +612,43 @@ on which finished last.
 It presented as an intermittent blank page in Safari and took four rounds to find, because every
 plausible theory — a stale cache, the subpath, a syntax cliff, CORS on the module script — was
 wrong. What found it was making the failure page report the bundle URL it had tried to load.
+
+### Hexagons, and what they cost
+
+A second cell complex was the real test of §3's claim that topology, carving and drawing are
+separable. The result: **HexGrid is 250 lines and nothing else changed.** Every carver, the
+braider, the solver, the metrics, the difficulty recipes, the shape masks, the entrance and exit
+search, the markers, the wall chaining, both output formats and the on-screen solving all work on
+it untouched.
+
+What it did cost was one honest refactor. `MaskedGrid` had been written against `SquareGrid`
+specifically; it is now written against a `BaseGrid` interface — a cell has `faces` sides, and the
+only questions anyone asks are where a face is, what lies across it, and which way it points. Two
+smaller things fell out of that: `placeMarker` had been checking the printable margin one axis at
+a time, which is only correct for faces that point along an axis, and is now a ray against the box;
+and `rowStructured` moved from "is this a rectangle" to "does this grid have rows at all".
+
+Hexagons are worth having for the puzzle, not the novelty. Six neighbours and no four-way junctions
+means no long straight corridors and no free choices — every junction is a real fork. The diagonal
+walls also suit the wobbly line styles, which on a square grid only ever bend at right angles.
+
+Two things had to be got right or nothing would have worked:
+
+**Adjacent cells must name the same lattice vertices**, not merely vertices at the same
+coordinates. Walls chain into polylines by vertex id, and the jitter styles displace by vertex id
+too, so a duplicate id at a shared corner would both fragment the path and tear the walls apart at
+every junction. There is a test that walks every cell, every face, and asserts the pair matches
+what the neighbour calls it.
+
+**A point has to resolve to a hexagon**, for solving on screen. Rounding each axis separately picks
+the wrong cell near a corner; the fix is cube coordinates — round all three, then discard whichever
+moved furthest. Tested at nine tenths of the way to every corner of every cell, which is exactly
+where the naive version fails.
+
+Sidewinder is the one thing that cannot follow. "Carve east along a run, then north out of it" has
+no single answer when a cell has two neighbours above it, so `HexGrid` declines `rowStructured` and
+the gentlest difficulty falls back to Kruskal on its own — which is what that interface was
+introduced for in §3, working as intended without a special case anywhere.
 
 ## 11. Three creative directions
 

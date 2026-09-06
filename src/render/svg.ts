@@ -35,7 +35,12 @@ function esc(s: string): string {
  * The viewBox is in millimetres, so stroke widths are millimetres too and the
  * drawing is physically correct at any output resolution.
  */
-export function sheetToSvg(sheet: Sheet, crop?: RenderOptions['crop']): string {
+export function sheetToSvg(
+  sheet: Sheet,
+  crop?: RenderOptions['crop'],
+  /** What to draw the dark ink in. `currentColor` lets an icon follow its chip. */
+  ink = '#000',
+): string {
   const view = crop ?? { x: 0, y: 0, width: sheet.width, height: sheet.height }
 
   let body = `<rect x="${f(view.x)}" y="${f(view.y)}" width="${f(view.width)}"` +
@@ -43,20 +48,21 @@ export function sheetToSvg(sheet: Sheet, crop?: RenderOptions['crop']): string {
 
   for (const s of sheet.strokes) {
     const d = toSvgPath(s.commands)
+    const paint = s.light === true ? '#fff' : ink
     if (s.fill === true) {
-      body += `<path d="${d}" fill="#000" stroke="none"/>`
+      body += `<path d="${d}" fill="${paint}" stroke="none"/>`
       continue
     }
     const dash = s.dash ? ` stroke-dasharray="${f(s.dash[0])} ${f(s.dash[1])}"` : ''
     body +=
-      `<path d="${d}" fill="none" stroke="#000" stroke-width="${f(s.width)}"` +
+      `<path d="${d}" fill="none" stroke="${paint}" stroke-width="${f(s.width)}"` +
       ` stroke-linecap="round" stroke-linejoin="round"${dash}/>`
   }
 
   for (const l of sheet.labels) {
     body +=
       `<text x="${f(l.at.x)}" y="${f(l.at.y)}" font-family="sans-serif"` +
-      ` font-size="${f(l.size)}" fill="#000">${esc(l.text)}</text>`
+      ` font-size="${f(l.size)}" fill="${ink}">${esc(l.text)}</text>`
   }
 
   return (

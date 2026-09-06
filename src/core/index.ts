@@ -1,6 +1,7 @@
 export type { CellId, EdgeId, Maze, RowStructured, Topology } from './types'
 export { hashSeed, makeRng, type Rng } from './rng'
 export { SquareGrid } from './grid/square'
+export { HexGrid, hexGridSize } from './grid/hex'
 export { MaskedGrid } from './grid/masked'
 export {
   EAST,
@@ -8,6 +9,7 @@ export {
   NORTH,
   SOUTH,
   WEST,
+  type BaseGrid,
   type PlanarGrid,
   type Point,
   type Segment,
@@ -35,6 +37,7 @@ export { carveSidewinder } from './carve/sidewinder'
 export { carveWilson } from './carve/wilson'
 
 export { braid, capDeadEndRun } from './braid'
+export { edgeBetween, follow, startTrail, step, type Trail } from './trail'
 export { reachableCount, solve } from './analyze'
 export {
   deadEndRuns,

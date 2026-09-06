@@ -1,12 +1,25 @@
-import { useEffect, useMemo, useState, type ReactNode } from 'react'
-import { generateMaze, shapesFor } from './generate'
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { baseGridFor, generateMaze, shapesFor } from './generate'
 import { renderPdf, renderSvg } from './render/svg'
-import { shapeIcon, styleThumbnail } from './render/thumbnail'
+import { sheetOrigin } from './render/sheet'
+import { polylineCommands, toSvgPath } from './render/path'
+import { follow, startTrail, type Trail } from './core/trail'
+import type { Point } from './core/grid/planar'
+import { cellsThumbnail, shapeIcon, styleThumbnail } from './render/thumbnail'
+import { wordShape } from './render/word'
 import { STYLES } from './render/style'
 import { RECIPES, type Level } from './core/difficulty'
 import { hashSeed } from './core/rng'
 import { PRESETS, presetFor } from './presets'
-import { MARKER, PAPERS, PENS, defaultPaperFor, type Paper } from './render/page'
+import {
+  CELL_KINDS,
+  MARKER,
+  PAPERS,
+  PENS,
+  SQUARES,
+  defaultPaperFor,
+  type Paper,
+} from './render/page'
 
 const HISTORY_LIMIT = 6
 
@@ -21,6 +34,7 @@ interface Snapshot {
   readonly level: Level
   readonly shapeId: string
   readonly styleId: string
+  readonly cellsId: string
   readonly seed: string
   readonly svg: string
 }
@@ -89,28 +103,49 @@ export default function App() {
   const [level, setLevel] = useState<Level>(2)
   const [penId, setPenId] = useState(MARKER.id)
   const [shapeId, setShapeId] = useState('rectangle')
+  const [cellsId, setCellsId] = useState(SQUARES.id)
+  const [word, setWord] = useState('')
   const [styleId, setStyleId] = useState('doodle')
   const [seed, setSeed] = useState(newSeed)
   const [showSolution, setShowSolution] = useState(false)
   const [calibration, setCalibration] = useState(false)
   const [markers, setMarkers] = useState(true)
   const [history, setHistory] = useState<Snapshot[]>([])
+  const [playing, setPlaying] = useState(false)
 
   const pen = PENS.find((p) => p.id === penId) ?? MARKER
-  const shapes = useMemo(() => shapesFor(paper, pen), [paper, pen])
-  const shape = shapes.find((s) => s.id === shapeId) ?? (shapes[0] as (typeof shapes)[number])
+  const cells = CELL_KINDS.find((c) => c.id === cellsId) ?? SQUARES
+  const shapes = useMemo(() => shapesFor(paper, pen, cells), [paper, pen, cells])
+  const picked = shapes.find((s) => s.id === shapeId) ?? (shapes[0] as (typeof shapes)[number])
+
+  // A word, when there is one, is a shape like any other — nothing downstream
+  // learns that this one came from typing. Sized against the bare grid rather
+  // than a carved maze, since all it needs is how many cells fit across.
+  const box = useMemo(() => baseGridFor(paper, pen, cells), [paper, pen, cells])
+  const fromWord = useMemo(() => {
+    if (word.trim() === '') return null
+    return wordShape(word, {
+      cellsAcross: box.width / box.pitch,
+      aspect: box.height / box.width,
+    })
+  }, [word, box])
+
+  // Falls back to the picked shape for an empty box, and for a word the browser
+  // could not draw.
+  const shape = fromWord ?? picked
   const style = STYLES.find((s) => s.id === styleId) ?? (STYLES[0] as (typeof STYLES)[number])
   const activePreset = presetFor(level, penId)
 
   const maze = useMemo(
-    () => generateMaze({ paper, pen, level, shape, seed }),
-    [paper, pen, level, shape, seed],
+    () => generateMaze({ paper, pen, level, shape, seed, cells }),
+    [paper, pen, level, shape, seed, cells],
   )
 
   const styleSeed = hashSeed(seed)
   const base = { paper, stroke: pen.stroke, style, styleSeed, markers }
   const caption =
-    `100 mm · ${paper.label} · ${pen.label} · ${shape.label} · ` + `${style.label} · seed ${seed}`
+    `100 mm · ${paper.label} · ${pen.label} · ${cells.label} · ${shape.label} · ` +
+    `${style.label} · seed ${seed}`
 
   const svg = useMemo(
     () => renderSvg(maze.grid, maze.maze, maze.solution, { ...base, showSolution, calibration, caption }),
@@ -150,6 +185,78 @@ export default function App() {
     window.setTimeout(() => URL.revokeObjectURL(url), 60_000)
   }
 
+  // --- solving on screen ---
+
+  // A trail is only ever a legal walk from the entrance; the rules live in
+  // core/trail.ts, which knows nothing about pointers or pixels.
+  const [trail, setTrail] = useState<Trail>(() => startTrail(maze.maze))
+  const overlay = useRef<SVGSVGElement>(null)
+  const last = useRef<Point | null>(null)
+
+  // A new maze means a new trail. Keyed on the maze itself rather than on the
+  // settings, so anything that regenerates one also clears the old route.
+  useEffect(() => {
+    setTrail(startTrail(maze.maze))
+    last.current = null
+  }, [maze])
+
+  const origin = sheetOrigin(paper, maze.grid)
+
+  /** A pointer, in millimetres from the maze's top-left corner. */
+  const gridPoint = useCallback(
+    (e: { clientX: number; clientY: number }): Point | null => {
+      const el = overlay.current
+      if (el === null) return null
+      const r = el.getBoundingClientRect()
+      if (r.width === 0 || r.height === 0) return null
+      return {
+        x: ((e.clientX - r.left) / r.width) * paper.width - origin.x,
+        y: ((e.clientY - r.top) / r.height) * paper.height - origin.y,
+      }
+    },
+    [paper, origin.x, origin.y],
+  )
+
+  const onTrailDown = (e: React.PointerEvent<SVGSVGElement>): void => {
+    // Only where the finger went down is remembered. Nothing moves until it
+    // reaches a cell next to the head of the trail, so touching the far side of
+    // the sheet cannot teleport the route there.
+    last.current = gridPoint(e)
+    e.currentTarget.setPointerCapture(e.pointerId)
+  }
+
+  const onTrailMove = (e: React.PointerEvent<SVGSVGElement>): void => {
+    const from = last.current
+    if (from === null) return
+    const to = gridPoint(e)
+    if (to === null) return
+    last.current = to
+    setTrail((t) => follow(t, maze.maze, maze.grid, from, to))
+  }
+
+  const onTrailUp = (): void => {
+    last.current = null
+  }
+
+  // Where the trail is drawn, in page millimetres: cell centres, starting at
+  // the gap in the wall so the line comes in from outside like the mouse does.
+  const trailPath = useMemo(() => {
+    const at = (c: number): Point => {
+      const p = maze.grid.cellCenter(c)
+      return { x: p.x + origin.x, y: p.y + origin.y }
+    }
+    const opening = maze.grid.openingPoint(maze.maze.start)
+    const points: Point[] = [
+      { x: opening.x + origin.x, y: opening.y + origin.y },
+      ...trail.cells.map(at),
+    ]
+    if (trail.done) {
+      const out = maze.grid.openingPoint(maze.maze.end)
+      points.push({ x: out.x + origin.x, y: out.y + origin.y })
+    }
+    return toSvgPath(polylineCommands(points, style.rounding * maze.grid.pitch))
+  }, [trail, maze, origin.x, origin.y, style])
+
   // A second render without the answer or the ruler, so the filmstrip shows the
   // maze rather than whatever happened to be toggled when it was made.
   const plate = useMemo(
@@ -158,16 +265,26 @@ export default function App() {
     [maze, paper, pen, style, styleSeed, markers],
   )
 
-  const key = `${paper.id}|${penId}|${level}|${shapeId}|${styleId}|${seed}`
+  const key = `${paper.id}|${penId}|${level}|${shape.id}|${styleId}|${cellsId}|${seed}`
   useEffect(() => {
     setHistory((prev) => {
       // Never reorder: a maze a child is looking for should stay where they
       // last saw it, not jump to the front because they revisited it.
       if (prev.some((h) => h.key === key)) return prev
-      const entry: Snapshot = { key, paperId: paper.id, penId, level, shapeId, styleId, seed, svg: plate }
+      const entry: Snapshot = {
+        key,
+        paperId: paper.id,
+        penId,
+        level,
+        shapeId,
+        styleId,
+        cellsId,
+        seed,
+        svg: plate,
+      }
       return [entry, ...prev].slice(0, HISTORY_LIMIT)
     })
-  }, [key, plate, paper.id, penId, level, shapeId, styleId, seed])
+  }, [key, plate, paper.id, penId, level, shapeId, styleId, cellsId, seed])
 
   const restore = (s: Snapshot): void => {
     setPaper(PAPERS.find((p) => p.id === s.paperId) ?? paper)
@@ -175,6 +292,7 @@ export default function App() {
     setLevel(s.level)
     setShapeId(s.shapeId)
     setStyleId(s.styleId)
+    setCellsId(s.cellsId)
     setSeed(s.seed)
   }
 
@@ -185,6 +303,10 @@ export default function App() {
     [shapes, aspect],
   )
   const styleIcons = useMemo(() => new Map(STYLES.map((s) => [s.id, styleThumbnail(s)])), [])
+  const cellIcons = useMemo(
+    () => new Map(CELL_KINDS.map((c) => [c.id, cellsThumbnail(c)])),
+    [],
+  )
 
   // Preset cards show a real maze at those settings, which is how a child sees
   // the difference between crayon-sized and fine-pen-sized without being told.
@@ -202,14 +324,14 @@ export default function App() {
     }
     return new Map(
       PRESETS.map((p) => {
-        const g = generateMaze({ paper, pen: p.pen, level: p.level, shape, seed: 'card' })
+        const g = generateMaze({ paper, pen: p.pen, level: p.level, shape, seed: 'card', cells })
         return [
           p.id,
           renderSvg(g.grid, g.maze, g.solution, { paper, stroke: p.pen.stroke, style, crop }),
         ]
       }),
     )
-  }, [paper, shape, style])
+  }, [paper, shape, style, cells])
 
   const printCss =
     `@page { size: ${paper.width}mm ${paper.height}mm; margin: 0; }\n` +
@@ -217,11 +339,45 @@ export default function App() {
     ` height: ${paper.height}mm !important; } }`
 
   return (
-    <div className="app">
+    <div className={playing ? 'app playing' : 'app'}>
       <style>{printCss}</style>
 
       <div className="stage">
-        <Svg markup={svg} className="sheet" />
+        <div
+          className="sheet"
+          style={
+            {
+              '--sheet-ratio': `${paper.width} / ${paper.height}`,
+              '--sheet-aspect': paper.width / paper.height,
+            } as React.CSSProperties
+          }
+        >
+          <Svg markup={svg} className="sheet-art" />
+
+          {playing && (
+            <svg
+              ref={overlay}
+              className={trail.done ? 'trail done' : 'trail'}
+              viewBox={`0 0 ${paper.width} ${paper.height}`}
+              onPointerDown={onTrailDown}
+              onPointerMove={onTrailMove}
+              onPointerUp={onTrailUp}
+              onPointerCancel={onTrailUp}
+            >
+              <path d={trailPath} strokeWidth={pen.pitch * 0.34} />
+              {trail.cells.length === 1 && !trail.done && (
+                <circle
+                  cx={maze.grid.cellCenter(maze.maze.start).x + origin.x}
+                  cy={maze.grid.cellCenter(maze.maze.start).y + origin.y}
+                  r={pen.pitch * 0.42}
+                  strokeWidth={pen.pitch * 0.16}
+                />
+              )}
+            </svg>
+          )}
+
+          {playing && trail.done && <div className="win">You did it!</div>}
+        </div>
       </div>
 
       <div className="strip" role="group" aria-label="Recent mazes">
@@ -273,7 +429,35 @@ export default function App() {
           ))}
         </Group>
 
-        <Group label="Lines" columns={4}>
+        <label className="word">
+          <span className="group-label">Or a word</span>
+          <input
+            type="text"
+            value={word}
+            onChange={(e) => setWord(e.target.value.slice(0, 12))}
+            placeholder="type a name"
+            inputMode="text"
+            autoCapitalize="characters"
+            autoCorrect="off"
+            spellCheck={false}
+            aria-label="Make a maze out of a word"
+          />
+        </label>
+
+        <Group label="Cells" columns={2}>
+          {CELL_KINDS.map((c) => (
+            <Chip
+              key={c.id}
+              on={c.id === cells.id}
+              onClick={() => setCellsId(c.id)}
+              label={c.label}
+            >
+              <Svg markup={cellIcons.get(c.id) ?? ''} className="icon" />
+            </Chip>
+          ))}
+        </Group>
+
+        <Group label="Lines" columns={3}>
           {STYLES.map((s) => (
             <Chip
               key={s.id}
@@ -352,12 +536,32 @@ export default function App() {
         </div>
 
         <div className="actions">
-          <button type="button" className="big" onClick={() => setSeed(newSeed())}>
-            New maze
-          </button>
-          <button type="button" className="big primary" onClick={savePdf}>
-            Print
-          </button>
+          {playing ? (
+            <>
+              <button
+                type="button"
+                className="big"
+                onClick={() => setTrail(startTrail(maze.maze))}
+              >
+                Start over
+              </button>
+              <button type="button" className="big primary" onClick={() => setPlaying(false)}>
+                Done
+              </button>
+            </>
+          ) : (
+            <>
+              <button type="button" className="big" onClick={() => setSeed(newSeed())}>
+                New maze
+              </button>
+              <button type="button" className="big" onClick={() => setPlaying(true)}>
+                Play
+              </button>
+              <button type="button" className="big primary" onClick={savePdf}>
+                Print
+              </button>
+            </>
+          )}
         </div>
       </div>
     </div>

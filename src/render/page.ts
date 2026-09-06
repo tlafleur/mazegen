@@ -79,3 +79,19 @@ export function gridSizeFor(paper: Paper, pitch: number, margin: number = DEFAUL
     rows: Math.floor((paper.height - 2 * margin) / pitch + 1e-9),
   }
 }
+
+/**
+ * What a cell is shaped like.
+ *
+ * A separate axis from difficulty, cell size and outline: the same carver and
+ * the same shape mask run on either, so this changes what the maze *is* rather
+ * than how it is drawn.
+ */
+export interface CellKind {
+  readonly id: string
+  readonly label: string
+}
+
+export const SQUARES: CellKind = { id: 'square', label: 'Squares' }
+export const HEXAGONS: CellKind = { id: 'hex', label: 'Hexagons' }
+export const CELL_KINDS: readonly CellKind[] = [SQUARES, HEXAGONS]

@@ -11,12 +11,18 @@ Live at **https://tlafleur.github.io/mazegen/** — installable, and works offli
 
 - Square grids on US Letter and A4, at four cell sizes named after what you would draw with
 - Five difficulty levels, calibrated by measurement rather than assumption
+- **Square or hexagonal cells** — six neighbours and no four-way junctions makes a different
+  puzzle, not the same one drawn differently
 - Ten shapes: page, rounded, oval, circle, heart, star, rocket, fish, cupcake, dinosaur
-- Four line styles: Classic, Soft, Doodle, Wonky
+- **Word mazes** — type a name and the maze is carved into its letters
+- Six line styles: Classic, Soft, Doodle, Wonky, Sketch, and Cave — which draws the passages
+  rather than the walls, so the maze reads as tunnels
 - A mouse at the entrance and cheese at the exit, so the maze says what it is for without words
 - Picture-led preset cards, a filmstrip of recent mazes, and a grown-up area for the rest
 - Optional answer overlay and a 100 mm calibration ruler
 - **Prints as a PDF**, written directly, at exactly 612 × 792 pt for Letter
+- **Solve it on screen**: press Play and trace the route with a finger; walls stop the line rather
+  than rejecting the move, so there is nothing to undo and no way to get stuck
 
 ## Printing, and what is known about it
 
@@ -45,7 +51,7 @@ and A4, so the other one gets scaled down to fit, which shrinks the cells with i
 ```sh
 npm install
 npm run dev      # http://localhost:5173
-npm test         # 202 tests, no browser needed
+npm test         # 269 tests, no browser needed
 npm run build    # includes a check that the offline build is intact
 ```
 
@@ -55,14 +61,16 @@ npm run build    # includes a check that the offline build is intact
 src/
   core/          zero dependencies, no DOM, fully unit tested
     rng.ts       seeded PRNG — every maze is a pure function of (settings, seed)
-    grid/        cell topology and geometry
+    grid/        cell topology and geometry — squares, hexagons, and shape masks
     carve/       carving algorithms; operate on an abstract graph, no geometry
     analyze.ts   solver
+    trail.ts     the rules for tracing a route by finger
   render/
     page.ts      paper sizes, cell sizes, how many cells fit on a sheet
     chain.ts     wall segments into maximal polylines
     sheet.ts     the page as strokes and labels, in millimetres — built once
     path.ts      drawing commands neither output format owns
+    word.ts      a typed word as a shape a maze fits inside
     svg.ts       a sheet as SVG, at exact page dimensions
     pdf.ts       a sheet as PDF, written directly; no library
   App.tsx        controls and preview
