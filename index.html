@@ -35,6 +35,18 @@
         border-radius: 8px;
         font-size: 13px;
       }
+      .fatal button {
+        min-height: 44px;
+        padding: 0 1rem;
+        font: inherit;
+        font-weight: 600;
+        color: #fff;
+        background: #1d4ed8;
+        border: 0;
+        border-radius: 10px;
+        cursor: pointer;
+      }
+      .fatal [hidden] { display: none; }
       .fatal kbd {
         background: #f2f3f5;
         border: 1px solid #d6d9de;
@@ -54,11 +66,69 @@
           older version.
         </p>
         <p>
-          A reload that ignores the cache normally fixes it: hold Shift and press reload, or
-          press <kbd>&#8984;</kbd> <kbd>Shift</kbd> <kbd>R</kbd>.
+          A reload that ignores the cache sometimes fixes it: hold Shift and press reload, or
+          press <kbd>&#8984;</kbd> <kbd>Shift</kbd> <kbd>R</kbd>. If not, the button below
+          clears everything this app has stored and starts over.
         </p>
+        <button type="button" id="repair">Reset and try again</button>
+        <p id="repair-status" hidden></p>
       </div>
     </div>
+    <script>
+      /*
+        Deliberately old-fashioned JavaScript, and deliberately inline.
+        This is the recovery path of last resort: it has to run when the
+        bundle is exactly what failed to load, and in whatever browser the
+        person is holding. No arrow functions, no optional chaining, no
+        modules — nothing that could itself be the thing that fails.
+
+        Clearing the browser's cache does not remove a service worker or its
+        stored responses. On Safari that takes Manage Website Data, which is
+        several menus deep and not somewhere a parent should have to go to
+        un-stick a maze. This button does the same job in one tap.
+      */
+      (function () {
+        var button = document.getElementById('repair')
+        if (!button) return
+        button.addEventListener('click', function () {
+          var status = document.getElementById('repair-status')
+          if (status) {
+            status.hidden = false
+            status.textContent = 'Clearing\u2026'
+          }
+          var jobs = []
+          if (navigator.serviceWorker && navigator.serviceWorker.getRegistrations) {
+            jobs.push(
+              navigator.serviceWorker.getRegistrations().then(function (regs) {
+                return Promise.all(
+                  regs.map(function (reg) {
+                    return reg.unregister()
+                  })
+                )
+              })
+            )
+          }
+          if (window.caches && window.caches.keys) {
+            jobs.push(
+              window.caches.keys().then(function (keys) {
+                return Promise.all(
+                  keys.map(function (key) {
+                    return window.caches.delete(key)
+                  })
+                )
+              })
+            )
+          }
+          Promise.all(jobs)
+            .catch(function () {
+              /* Reload regardless: a partial clear is still worth retrying. */
+            })
+            .then(function () {
+              window.location.reload()
+            })
+        })
+      })()
+    </script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
