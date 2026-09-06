@@ -18,6 +18,10 @@ function sourcesUnder(dir: string): string[] {
  * That is easy to state and easy to erode one convenient import at a time, so
  * it is checked rather than remembered — a mistake already caught once while
  * wiring up line styles.
+ *
+ * This file sits outside core/ deliberately: it reads the filesystem, and a
+ * test that needs node:fs has no business living in the directory whose whole
+ * point is having no dependencies.
  */
 describe('core stays self-contained', () => {
   const files = sourcesUnder('src/core')
