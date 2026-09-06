@@ -22,6 +22,7 @@ export class MaskedGrid implements Topology, PlanarGrid {
   readonly edgeCount: number
   readonly vertexCount: number
   readonly pitch: number
+  readonly passageGap: number
   readonly width: number
   readonly height: number
   /** True when the mask removed nothing, so the base rectangle is intact. */
@@ -43,6 +44,7 @@ export class MaskedGrid implements Topology, PlanarGrid {
     mask: Mask,
   ) {
     this.pitch = base.pitch
+    this.passageGap = base.passageGap
     this.width = base.width
     this.height = base.height
     this.vertexCount = base.vertexCount

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { E, HexGrid, NE, NW, SE, SW, W, hexGridSize } from './hex'
 import { MaskedGrid } from './masked'
+import { SquareGrid } from './square'
 import { circleMask, rectangleMask } from './mask'
 import { carveAtLevel } from '../difficulty'
 import { makeRng } from '../rng'
@@ -161,6 +162,58 @@ describe('HexGrid geometry', () => {
 
   it('refuses a grid too small to be a maze', () => {
     expect(() => new HexGrid(1, 5, 9)).toThrow(/too small/)
+  })
+})
+
+describe('passageGap', () => {
+  /**
+   * The closest two passage segments that share no cell actually come.
+   *
+   * Brute force over every pair, because this is the number the Cave style
+   * sizes its tunnels from: get it wrong upward and two tunnels merge into one,
+   * which makes the maze wrong rather than ugly.
+   */
+  function measure(g: { cellCount: number; edgeCount: number
+    endpoints(e: number): readonly [number, number]
+    cellCenter(c: number): { x: number; y: number } }): number {
+    const segs: { a: { x: number; y: number }; b: { x: number; y: number }; cells: [number, number] }[] = []
+    for (let e = 0; e < g.edgeCount; e++) {
+      const [a, b] = g.endpoints(e)
+      segs.push({ a: g.cellCenter(a), b: g.cellCenter(b), cells: [a, b] })
+    }
+
+    const distToSeg = (p: { x: number; y: number }, s: (typeof segs)[number]): number => {
+      const dx = s.b.x - s.a.x
+      const dy = s.b.y - s.a.y
+      const len2 = dx * dx + dy * dy
+      const t = Math.max(0, Math.min(1, ((p.x - s.a.x) * dx + (p.y - s.a.y) * dy) / len2))
+      return Math.hypot(p.x - (s.a.x + t * dx), p.y - (s.a.y + t * dy))
+    }
+
+    let best = Infinity
+    for (let i = 0; i < segs.length; i++) {
+      for (let j = i + 1; j < segs.length; j++) {
+        const s = segs[i] as (typeof segs)[number]
+        const t = segs[j] as (typeof segs)[number]
+        // Passages that meet at a cell are the same channel, not two.
+        if (s.cells.some((c) => t.cells.includes(c))) continue
+        best = Math.min(best, distToSeg(s.a, t), distToSeg(s.b, t), distToSeg(t.a, s), distToSeg(t.b, s))
+      }
+    }
+    return best
+  }
+
+  it('matches what the hexagonal grid claims', () => {
+    const g = new HexGrid(6, 6, 9)
+    expect(measure(g)).toBeCloseTo(g.passageGap, 9)
+    // And it really is nearer than a whole cell, which is the point.
+    expect(g.passageGap).toBeLessThan(g.pitch)
+  })
+
+  it('matches what the square grid claims', () => {
+    const g = new SquareGrid(6, 6, 9)
+    expect(measure(g)).toBeCloseTo(g.passageGap, 9)
+    expect(g.passageGap).toBe(g.pitch)
   })
 })
 

@@ -25,6 +25,8 @@ export type { Point, Segment }
 export class SquareGrid implements BaseGrid, RowStructured {
   /** Four sides, in the order NORTH, EAST, SOUTH, WEST. */
   readonly faces = 4
+  /** Two parallel corridors sit one whole cell apart. */
+  readonly passageGap: number
   readonly cellCount: number
   readonly edgeCount: number
   readonly vertexCount: number
@@ -46,6 +48,7 @@ export class SquareGrid implements BaseGrid, RowStructured {
     this.vertexCount = (cols + 1) * (rows + 1)
     this.width = cols * pitch
     this.height = rows * pitch
+    this.passageGap = pitch
   }
 
   cellAt(col: number, row: number): CellId {

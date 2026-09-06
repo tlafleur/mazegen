@@ -34,6 +34,16 @@ export const FACE_NORMALS: readonly Point[] = [
  */
 export interface BaseGrid extends Topology {
   readonly pitch: number
+  /**
+   * The closest two passages that share no cell can come, in millimetres.
+   *
+   * Not the same as the pitch. On squares two parallel corridors are a whole
+   * cell apart, but on hexagons the nearest parallel pair is only √3/2 of one —
+   * so a Cave tunnel sized from the pitch would very nearly touch its
+   * neighbour, and at fine-pen density would merge with it. Anything that draws
+   * *between* cells rather than along their faces has to measure from this.
+   */
+  readonly passageGap: number
   readonly width: number
   readonly height: number
   readonly vertexCount: number
@@ -67,6 +77,8 @@ export interface BaseGrid extends Topology {
  */
 export interface PlanarGrid {
   readonly pitch: number
+  /** See `BaseGrid.passageGap`. */
+  readonly passageGap: number
   /** Bounding box of the whole grid, in millimetres. */
   readonly width: number
   readonly height: number

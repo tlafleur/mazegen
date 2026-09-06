@@ -7,6 +7,20 @@ export interface Style {
   readonly rounding: number
   /** Vertex displacement, as a fraction of the cell pitch. 0 keeps a true lattice. */
   readonly jitter: number
+  /**
+   * Draw the passages rather than the walls.
+   *
+   * The same maze, rendered inside out: a wide black stroke along the passage
+   * graph with a narrower white one on top of it, which leaves outlined tunnels
+   * and no boolean geometry anywhere. Two paths for the whole sheet.
+   */
+  readonly cave?: boolean
+  /**
+   * Draw every line twice, each pass wandering on its own, as a fraction of
+   * pitch. What a person does with a pen; nothing else in this file is
+   * per-stroke rather than per-vertex.
+   */
+  readonly sketch?: number
 }
 
 /**
@@ -22,12 +36,43 @@ export const MAX_JITTER = 0.2
 
 export const CLASSIC: Style = { id: 'classic', label: 'Classic', rounding: 0, jitter: 0 }
 
+/**
+ * How much of a tunnel's width the wall between two of them takes.
+ *
+ * At 0.18 the black band is 0.82 × pitch and the white gap between two
+ * neighbouring tunnels is 0.18 × pitch — 1.6 mm at marker size, 2.2 mm at
+ * crayon. Thick enough to read as a wall, thin enough to leave the tunnel
+ * wider than the pen drawing in it.
+ */
+export const CAVE_GAP = 0.18
+
 export const STYLES: readonly Style[] = [
   CLASSIC,
   { id: 'soft', label: 'Soft', rounding: 0.35, jitter: 0 },
   { id: 'doodle', label: 'Doodle', rounding: 0.35, jitter: 0.14 },
   { id: 'wonky', label: 'Wonky', rounding: 0.25, jitter: MAX_JITTER },
+  // Sketch keeps its shared jitter small so its two passes have room to wander
+  // separately: measured, a pass has to move further than the stroke is wide or
+  // the two land on top of each other and the line looks drawn once. The sum is
+  // still what the corridor guarantee has to hold.
+  { id: 'sketch', label: 'Sketch', rounding: 0.3, jitter: 0.06, sketch: 0.1 },
+  { id: 'cave', label: 'Cave', rounding: 0.5, jitter: 0, cave: true },
 ]
+
+/**
+ * How far one pass of a sketched line wanders at a given point.
+ *
+ * Keyed on the pass and on position along the line rather than on a vertex id,
+ * which is the opposite of `jitterOffset` and deliberately so: two passes over
+ * the same wall must *not* agree, or they would land on top of each other and
+ * the line would look drawn once.
+ */
+export function sketchOffset(pass: number, index: number, seed: number, amount: number): Point {
+  if (amount === 0) return { x: 0, y: 0 }
+  const angle = hash(index * 2 + pass, seed + pass * 0x9e37, 0x51ed270b) * Math.PI * 2
+  const radius = Math.sqrt(hash(index, seed + pass * 0x85eb, 0xc2b2ae35)) * amount
+  return { x: Math.cos(angle) * radius, y: Math.sin(angle) * radius }
+}
 
 /** Two independent values in [0, 1) from a pair of integers. */
 function hash(a: number, b: number, salt: number): number {

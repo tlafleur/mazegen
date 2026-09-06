@@ -11,6 +11,14 @@ export interface SheetStroke {
   readonly dash?: readonly [number, number]
   /** Fill the path solidly instead of stroking its outline. */
   readonly fill?: boolean
+  /**
+   * Draw in white rather than black.
+   *
+   * Only the Cave style needs this: it strokes the passage graph wide in black
+   * and then narrower in white on top, which leaves outlined tunnels without
+   * computing any boolean geometry.
+   */
+  readonly light?: boolean
 }
 
 export interface SheetLabel {
@@ -83,6 +91,7 @@ function contentStream(sheet: Sheet): string {
 
   for (const stroke of sheet.strokes) {
     parts.push('q')
+    if (stroke.light === true) parts.push('1 G 1 g')
     if (stroke.fill !== true) {
       parts.push(`${n2(stroke.width)} w`)
       if (stroke.dash) parts.push(`[${n2(stroke.dash[0])} ${n2(stroke.dash[1])}] 0 d`)

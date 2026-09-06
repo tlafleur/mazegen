@@ -250,14 +250,38 @@ detached from its own gap in the wall.
 from 62 kB (Classic) to 144 kB (Doodle), rendering in 8 ms. Inline in the DOM that is not a problem,
 and it stays well inside a frame.
 
+### Shipped in phase 2
+
+**Sketch** — every line drawn twice, each pass wandering on its own, with the ends run slightly past
+their junctions. Note that this is the *opposite* of the jitter rule above: jitter is keyed on the
+vertex so walls meeting there agree, and a sketch pass is keyed on the pass so the two lines
+deliberately do *not*. Both wanders are charged against the same 0.2 × pitch budget, so no
+combination narrows a corridor past what the guarantee says.
+
+Two numbers came from looking at the output rather than from reasoning. A pass has to move further
+than the stroke is wide, or the two lines land on top of each other and it reads as one fat line —
+0.055 × pitch was invisible at marker size, 0.1 works. And each pass is drawn at 0.8 × the stroke
+width, because two full-weight lines half a millimetre apart still read as one line.
+
+**Cave** — the maze rendered inside out. A wide black stroke along the passage graph, then a
+narrower white one over the top: the white covers the middle and leaves the edges showing, which is
+an outlined tunnel with no boolean geometry anywhere and two paths for the whole sheet.
+
+The tunnel width cannot be taken from the pitch, which is the trap. On squares two parallel
+corridors are a whole cell apart, but on hexagons the nearest parallel pair is only √3/2 of one — so
+a tunnel sized from the pitch leaves 0.046 × pitch of white between neighbours, which is 0.18 mm at
+fine-pen density and merges two passages into one. `BaseGrid` therefore carries `passageGap`, the
+closest two passages sharing no cell can come, and a test measures it by brute force over every pair
+of segments rather than trusting the arithmetic.
+
+Adding these also caught a copy: `styleThumbnail` had its own miniature version of the drawing code,
+which knew only about rounding and jitter — so the moment Sketch and Cave existed, both icons showed
+a plain Classic maze. The icons are built by the real renderer now. An icon that can disagree with
+what it is picking is worse than no icon at all.
+
 ### Still to come
 
-- **Sketch** — each polyline drawn twice with small independent perturbations and slight end
-  overshoot. Hand-drawn without a dependency, ~40 lines. Costs more ink.
-- **Cave** — render the *passages* instead of the walls. Stroke the passage graph at width
-  `pitch − gap` in black with round caps and joins, then stroke the same path at
-  `pitch − gap − 2·strokeWidth` in white on top. Outlined organic tunnels, no boolean geometry, two
-  paths total.
+- **Polar** — a third `BaseGrid`, with rings subdivided as they grow outward.
 
 ## 6. Shape
 

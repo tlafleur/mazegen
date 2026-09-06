@@ -424,7 +424,7 @@ export default function App() {
           ))}
         </Group>
 
-        <Group label="Lines" columns={4}>
+        <Group label="Lines" columns={3}>
           {STYLES.map((s) => (
             <Chip
               key={s.id}

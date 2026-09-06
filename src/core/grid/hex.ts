@@ -66,6 +66,13 @@ const STEP: readonly (readonly [number, number])[][] = [
  */
 export class HexGrid implements BaseGrid {
   readonly faces = 6
+  /**
+   * Nearer than a whole cell: the closest parallel pair of passages runs
+   * between two rows, which are three quarters of a hexagon's height apart —
+   * √3/2 of the pitch. Held to that by a test that measures it rather than
+   * trusting the arithmetic here.
+   */
+  readonly passageGap: number
   readonly cellCount: number
   readonly edgeCount: number
   readonly vertexCount: number
@@ -90,6 +97,7 @@ export class HexGrid implements BaseGrid {
   ) {
     if (cols < 2 || rows < 2) throw new Error(`grid too small: ${cols}x${rows}`)
     this.r = pitch / ROOT3
+    this.passageGap = pitch * H
     this.cellCount = cols * rows
     // Odd rows sit half a cell to the right, so the grid is that much wider
     // than a plain multiple of the pitch.

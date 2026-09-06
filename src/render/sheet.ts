@@ -1,9 +1,9 @@
 import type { CellId, Maze } from '../core/types'
 import type { PlanarGrid, Point, Segment } from '../core/grid/planar'
 import { chainSegments } from './chain'
-import { polylineCommands } from './path'
+import { polylineCommands, type PathCommand } from './path'
 import { DEFAULT_MARGIN, type Paper } from './page'
-import { CLASSIC, MAX_JITTER, jitterOffset, type Style } from './style'
+import { CAVE_GAP, CLASSIC, MAX_JITTER, jitterOffset, sketchOffset, type Style } from './style'
 import { CHEESE, MOUSE, placeMarker } from './marker'
 import type { Sheet, SheetLabel, SheetStroke } from './pdf'
 
@@ -76,14 +76,53 @@ export function buildSheet(
     return { x: p.x + j.x + ox, y: p.y + j.y + oy }
   }
 
-  // The outline, minus the two openings the maze is entered and left through.
-  const segments: Segment[] = grid.boundarySegments([maze.start, maze.end])
-  for (let e = 0; e < maze.topo.edgeCount; e++) {
-    if (maze.open[e] === 0) segments.push(grid.wallSegment(e))
-  }
+  if (style.cave === true) {
+    strokes.push(...caveStrokes(grid, maze, radius, opts.stroke, ox, oy))
+  } else {
+    // The outline, minus the two openings the maze is entered and left through.
+    const segments: Segment[] = grid.boundarySegments([maze.start, maze.end])
+    for (let e = 0; e < maze.topo.edgeCount; e++) {
+      if (maze.open[e] === 0) segments.push(grid.wallSegment(e))
+    }
 
-  for (const poly of chainSegments(segments, grid.vertexCount)) {
-    strokes.push({ commands: polylineCommands(poly.map(at), radius), width: opts.stroke })
+    // Sketch draws each line twice. Its wander is charged against the same
+    // budget as the shared jitter, so no combination of the two can narrow a
+    // corridor past what §5 guarantees.
+    const wander = Math.min(style.sketch ?? 0, MAX_JITTER - jitter / grid.pitch) * grid.pitch
+    const passes = wander > 0 ? 2 : 1
+    let n = 0
+
+    for (const poly of chainSegments(segments, grid.vertexCount)) {
+      const points = poly.map(at)
+      const first = points[0] as Point
+      const last = points[points.length - 1] as Point
+      const closed =
+        points.length > 3 &&
+        Math.abs(first.x - last.x) < 1e-9 &&
+        Math.abs(first.y - last.y) < 1e-9
+
+      for (let pass = 0; pass < passes; pass++) {
+        const base = n
+        const drawn =
+          passes === 1
+            ? points
+            : points.map((p, i) => {
+                const d = sketchOffset(pass, base + i, styleSeed, wander)
+                return { x: p.x + d.x, y: p.y + d.y }
+              })
+        strokes.push({
+          commands: polylineCommands(
+            passes === 1 || closed ? drawn : overshoot(drawn, grid.pitch * 0.09),
+            radius,
+          ),
+          // Each pass is lighter than a single line would be. Two full-weight
+          // strokes half a millimetre apart read as one fat line, not as a line
+          // drawn twice.
+          width: passes === 1 ? opts.stroke : opts.stroke * 0.8,
+        })
+      }
+      n += points.length
+    }
   }
 
   /** Midpoint of a cell's opening, following the same displacement as the walls. */
@@ -169,4 +208,76 @@ export function buildSheet(
   }
 
   return { width: paper.width, height: paper.height, strokes, labels }
+}
+
+/**
+ * Run the two ends of an open line a little past where they belong.
+ *
+ * The overshoot at a junction is most of what makes a drawn line look drawn; a
+ * closed ring has no ends and gets none.
+ */
+function overshoot(points: readonly Point[], by: number): Point[] {
+  const out = [...points]
+  const push = (from: Point, toward: Point): Point => {
+    const dx = from.x - toward.x
+    const dy = from.y - toward.y
+    const len = Math.hypot(dx, dy)
+    if (len === 0) return from
+    return { x: from.x + (dx / len) * by, y: from.y + (dy / len) * by }
+  }
+  out[0] = push(points[0] as Point, points[1] as Point)
+  out[out.length - 1] = push(
+    points[points.length - 1] as Point,
+    points[points.length - 2] as Point,
+  )
+  return out
+}
+
+/**
+ * The maze rendered inside out: tunnels rather than walls.
+ *
+ * A wide black stroke along the passage graph, then a narrower white one over
+ * the top of it. The white pass covers the middle of the black one and leaves
+ * its edges showing, which is an outlined tunnel — with no boolean geometry
+ * anywhere and two paths for the whole sheet. Every black stroke has to be laid
+ * down before any white one, or a later tunnel would paint over an earlier
+ * one's inside.
+ */
+function caveStrokes(
+  grid: PlanarGrid,
+  maze: Maze,
+  radius: number,
+  stroke: number,
+  ox: number,
+  oy: number,
+): SheetStroke[] {
+  const at = (cell: CellId): Point => {
+    const p = grid.cellCenter(cell)
+    return { x: p.x + ox, y: p.y + oy }
+  }
+
+  const links: Segment[] = []
+  for (let e = 0; e < maze.topo.edgeCount; e++) {
+    if (maze.open[e] === 1) links.push(maze.topo.endpoints(e) as Segment)
+  }
+
+  const paths: PathCommand[][] = chainSegments(links, maze.topo.cellCount).map((run) =>
+    polylineCommands(run.map(at), radius),
+  )
+
+  // Stubs out through the two gaps in the outline, so the tunnels have a mouth
+  // rather than stopping a cell short of one.
+  for (const cell of [maze.start, maze.end]) {
+    const p = grid.openingPoint(cell)
+    paths.push(polylineCommands([at(cell), { x: p.x + ox, y: p.y + oy }], 0))
+  }
+
+  // Measured from the passage gap, not the pitch: on hexagons the nearest
+  // parallel pair of tunnels is closer than a whole cell, and sizing from the
+  // pitch would very nearly merge them.
+  const tunnel = grid.passageGap * (1 - CAVE_GAP)
+  return [
+    ...paths.map((commands) => ({ commands, width: tunnel })),
+    ...paths.map((commands) => ({ commands, width: tunnel - 2 * stroke, light: true })),
+  ]
 }

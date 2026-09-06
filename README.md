@@ -14,7 +14,8 @@ Live at **https://tlafleur.github.io/mazegen/** — installable, and works offli
 - **Square or hexagonal cells** — six neighbours and no four-way junctions makes a different
   puzzle, not the same one drawn differently
 - Ten shapes: page, rounded, oval, circle, heart, star, rocket, fish, cupcake, dinosaur
-- Four line styles: Classic, Soft, Doodle, Wonky
+- Six line styles: Classic, Soft, Doodle, Wonky, Sketch, and Cave — which draws the passages
+  rather than the walls, so the maze reads as tunnels
 - A mouse at the entrance and cheese at the exit, so the maze says what it is for without words
 - Picture-led preset cards, a filmstrip of recent mazes, and a grown-up area for the rest
 - Optional answer overlay and a 100 mm calibration ruler
@@ -49,7 +50,7 @@ and A4, so the other one gets scaled down to fit, which shrinks the cells with i
 ```sh
 npm install
 npm run dev      # http://localhost:5173
-npm test         # 245 tests, no browser needed
+npm test         # 247 tests, no browser needed
 npm run build    # includes a check that the offline build is intact
 ```
 
