@@ -134,7 +134,7 @@ export class SquareGrid implements BaseGrid, RowStructured {
     return this.cellAt(col, row)
   }
 
-  faceNormal(dir: number): Point {
+  faceNormal(_cell: CellId, dir: number): Point {
     return FACE_NORMALS[dir] as Point
   }
 
