@@ -18,8 +18,10 @@ import {
   PENS,
   SQUARES,
   defaultPaperFor,
+  oriented,
   type Paper,
 } from './render/page'
+import { MARKER_SETS } from './render/marker'
 
 const HISTORY_LIMIT = 6
 
@@ -35,6 +37,7 @@ interface Snapshot {
   readonly shapeId: string
   readonly styleId: string
   readonly cellsId: string
+  readonly wide: boolean
   readonly seed: string
   readonly svg: string
 }
@@ -99,7 +102,8 @@ function Group({
 }
 
 export default function App() {
-  const [paper, setPaper] = useState<Paper>(() => defaultPaperFor(navigator.language))
+  const [sheetSize, setSheetSize] = useState<Paper>(() => defaultPaperFor(navigator.language))
+  const [wide, setWide] = useState(false)
   const [level, setLevel] = useState<Level>(2)
   const [penId, setPenId] = useState(MARKER.id)
   const [shapeId, setShapeId] = useState('rectangle')
@@ -109,10 +113,12 @@ export default function App() {
   const [seed, setSeed] = useState(newSeed)
   const [showSolution, setShowSolution] = useState(false)
   const [calibration, setCalibration] = useState(false)
-  const [markers, setMarkers] = useState(true)
+  const [markers, setMarkers] = useState('mouse')
+  const [inkOutside, setInkOutside] = useState(false)
   const [history, setHistory] = useState<Snapshot[]>([])
   const [playing, setPlaying] = useState(false)
 
+  const paper = useMemo(() => oriented(sheetSize, wide), [sheetSize, wide])
   const pen = PENS.find((p) => p.id === penId) ?? MARKER
   const cells = CELL_KINDS.find((c) => c.id === cellsId) ?? SQUARES
   const shapes = useMemo(() => shapesFor(paper, pen, cells), [paper, pen, cells])
@@ -142,7 +148,7 @@ export default function App() {
   )
 
   const styleSeed = hashSeed(seed)
-  const base = { paper, stroke: pen.stroke, style, styleSeed, markers }
+  const base = { paper, stroke: pen.stroke, style, styleSeed, markers, inkOutside }
   const caption =
     `100 mm · ${paper.label} · ${pen.label} · ${cells.label} · ${shape.label} · ` +
     `${style.label} · seed ${seed}`
@@ -150,7 +156,7 @@ export default function App() {
   const svg = useMemo(
     () => renderSvg(maze.grid, maze.maze, maze.solution, { ...base, showSolution, calibration, caption }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [maze, paper, pen, style, styleSeed, seed, showSolution, calibration, markers],
+    [maze, paper, pen, style, styleSeed, seed, showSolution, calibration, markers, inkOutside],
   )
 
   /**
@@ -262,10 +268,10 @@ export default function App() {
   const plate = useMemo(
     () => renderSvg(maze.grid, maze.maze, maze.solution, base),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [maze, paper, pen, style, styleSeed, markers],
+    [maze, paper, pen, style, styleSeed, markers, inkOutside],
   )
 
-  const key = `${paper.id}|${penId}|${level}|${shape.id}|${styleId}|${cellsId}|${seed}`
+  const key = `${sheetSize.id}|${wide}|${penId}|${level}|${shape.id}|${styleId}|${cellsId}|${seed}`
   useEffect(() => {
     setHistory((prev) => {
       // Never reorder: a maze a child is looking for should stay where they
@@ -273,21 +279,23 @@ export default function App() {
       if (prev.some((h) => h.key === key)) return prev
       const entry: Snapshot = {
         key,
-        paperId: paper.id,
+        paperId: sheetSize.id,
         penId,
         level,
         shapeId,
         styleId,
         cellsId,
+        wide,
         seed,
         svg: plate,
       }
       return [entry, ...prev].slice(0, HISTORY_LIMIT)
     })
-  }, [key, plate, paper.id, penId, level, shapeId, styleId, cellsId, seed])
+  }, [key, plate, sheetSize.id, wide, penId, level, shapeId, styleId, cellsId, seed])
 
   const restore = (s: Snapshot): void => {
-    setPaper(PAPERS.find((p) => p.id === s.paperId) ?? paper)
+    setSheetSize(PAPERS.find((p) => p.id === s.paperId) ?? sheetSize)
+    setWide(s.wide)
     setPenId(s.penId)
     setLevel(s.level)
     setShapeId(s.shapeId)
@@ -475,10 +483,19 @@ export default function App() {
 
           <Group label="Paper" columns={2}>
             {PAPERS.map((p) => (
-              <Chip key={p.id} on={p.id === paper.id} onClick={() => setPaper(p)}>
+              <Chip key={p.id} on={p.id === sheetSize.id} onClick={() => setSheetSize(p)}>
                 {p.label}
               </Chip>
             ))}
+          </Group>
+
+          <Group label="Turned" columns={2}>
+            <Chip on={!wide} onClick={() => setWide(false)}>
+              Tall
+            </Chip>
+            <Chip on={wide} onClick={() => setWide(true)}>
+              Wide
+            </Chip>
           </Group>
 
           <Group label="Difficulty" columns={3}>
@@ -504,9 +521,17 @@ export default function App() {
             <Chip on={calibration} onClick={() => setCalibration((v) => !v)}>
               Ruler
             </Chip>
-            <Chip on={markers} onClick={() => setMarkers((v) => !v)}>
-              Mouse
+            <Chip on={inkOutside} onClick={() => setInkOutside((v) => !v)}>
+              Filled
             </Chip>
+          </Group>
+
+          <Group label="Start and finish" columns={3}>
+            {MARKER_SETS.map((m) => (
+              <Chip key={m.id} on={m.id === markers} onClick={() => setMarkers(m.id)}>
+                {m.label}
+              </Chip>
+            ))}
           </Group>
 
           <div className="meta">
@@ -518,6 +543,12 @@ export default function App() {
             <br />
             seed <code>{seed}</code>
           </div>
+
+          <p className="note">
+            <b>Filled</b> inks the page around the maze, which is what makes a word readable — at
+            cell scale the letters are corridors like any other, and it is the outside that says
+            where they end. It uses a great deal of toner on a whole sheet.
+          </p>
 
           <p className="note">
             The ruler prints a 100 mm line. Measure it: any difference is scaling applied between

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { edgeBetween, follow, startTrail, step, type Trail } from './trail'
+import { REACH, edgeBetween, follow, startTrail, step, type Trail } from './trail'
 import { SquareGrid } from './grid/square'
 import { MaskedGrid } from './grid/masked'
 import { rectangleMask } from './grid/mask'
@@ -139,6 +139,44 @@ describe('follow', () => {
       from = p
     }
     expect(t.done).toBe(true)
+  })
+
+  it('follows a finger that cuts the corners', () => {
+    // The complaint this exists for. A pointer rounding a turn leaves the
+    // corridor and its next sample lands in the cell *after* the corner, which
+    // is diagonal from the head. Simulated by dragging between every other cell
+    // of the route, so every corner is cut.
+    const route = solve(maze) as CellId[]
+    const sloppy = route.filter((_, i) => i % 2 === 0)
+    if (sloppy[sloppy.length - 1] !== maze.end) sloppy.push(maze.end)
+
+    const drag = (reach: number): Trail => {
+      let t = startTrail(maze)
+      let from = at(maze.start)
+      for (const c of sloppy) {
+        const p = at(c)
+        t = follow(t, maze, grid, from, p, reach)
+        from = p
+      }
+      return t
+    }
+
+    // One cell at a time cannot follow it; three can.
+    expect(drag(1).done).toBe(false)
+    expect(drag(REACH).done).toBe(true)
+  })
+
+  it('still refuses to cross a wall, however forgiving it is', () => {
+    // Forgiveness is a longer legal path, never a shorter illegal one: every
+    // consecutive pair must still share an open passage.
+    const corner = grid.cellCount - 1
+    const t = follow(startTrail(maze), maze, grid, at(maze.start), at(corner), 5)
+    for (let i = 1; i < t.cells.length; i++) {
+      const e = edgeBetween(maze, t.cells[i - 1] as CellId, t.cells[i] as CellId)
+      expect(e).not.toBe(-1)
+      expect(maze.open[e]).toBe(1)
+    }
+    expect(new Set(t.cells).size).toBe(t.cells.length)
   })
 
   it('works on a shape, where a point can be outside the maze', () => {

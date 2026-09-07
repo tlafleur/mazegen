@@ -4,8 +4,12 @@ import { chainSegments } from './chain'
 import { polylineCommands, type PathCommand } from './path'
 import { DEFAULT_MARGIN, type Paper } from './page'
 import { CAVE_GAP, CLASSIC, MAX_JITTER, jitterOffset, sketchOffset, type Style } from './style'
-import { CHEESE, MOUSE, placeMarker } from './marker'
+import { markerSet, placeMarker } from './marker'
 import type { Sheet, SheetLabel, SheetStroke } from './pdf'
+
+/** The box a marker is drawn in, and its clearance from the outline, in mm. */
+const MARKER_SIZE = 10
+const MARKER_GAP = 1.5
 
 export interface SheetOptions {
   readonly paper: Paper
@@ -15,8 +19,16 @@ export interface SheetOptions {
   readonly style?: Style
   /** Varies the jitter without changing the maze. */
   readonly styleSeed?: number
-  /** Draw a mouse at the entrance and cheese at the exit. */
-  readonly markers?: boolean
+  /** Which drawings to put at the two ends: "mouse", "arrows" or "none". */
+  readonly markers?: string
+  /**
+   * Ink the page around the maze, leaving the maze itself white.
+   *
+   * What makes a word maze readable: at cell scale the letters are a field of
+   * corridors like any other, and it is the *outside* that says where they end.
+   * Costs a great deal of toner, so it is off unless asked for.
+   */
+  readonly inkOutside?: boolean
   /** Draw a 100 mm reference line and a caption in the bottom margin. */
   readonly calibration?: boolean
   readonly caption?: string
@@ -74,6 +86,29 @@ export function buildSheet(
     const p = grid.vertexPos(v)
     const j = jitterOffset(v, styleSeed, jitter)
     return { x: p.x + j.x + ox, y: p.y + j.y + oy }
+  }
+
+  // Wide enough to hold a marker, so the mouse has black to sit on.
+  const halo = Math.max(grid.pitch * 3, MARKER_SIZE + MARKER_GAP + 1)
+
+  // Before anything else, so every wall is drawn over the top of it.
+  if (opts.inkOutside === true) {
+    // A band hugging the outside of the shape rather than the whole sheet.
+    // Inking the page margin to margin reads beautifully and puts about 85% ink
+    // coverage on the paper, which curls a sheet and empties a cartridge in two
+    // of them; the eye only needs the boundary, not the field.
+    //
+    // Drawn without offsetting any polygon: stroke the outline at twice the
+    // band width, then fill the same outline white, which covers the half of
+    // that stroke lying inside the shape. Two paths, and they agree exactly
+    // because they are the same path.
+    const rings = chainSegments(grid.boundarySegments(), grid.vertexCount).map((ring) =>
+      // Displaced the same way the walls are, or the ink and the outline part
+      // company wherever a style has any jitter.
+      polylineCommands(ring.map(at), radius),
+    )
+    for (const commands of rings) strokes.push({ commands, width: halo * 2 })
+    for (const commands of rings) strokes.push({ commands, width: 0, fill: true, light: true })
   }
 
   if (style.cave === true) {
@@ -158,32 +193,40 @@ export function buildSheet(
 
   // Drawn outside the outline, along the direction the opening faces, so they
   // never collide with a wall and need no test that they have not.
-  if (opts.markers === true) {
-    for (const [cell, marker] of [
-      [maze.start, MOUSE],
-      [maze.end, CHEESE],
-    ] as const) {
-      const outward = grid.openingNormal(cell)
-      if (outward === null) continue
-      for (const part of placeMarker(
-        {
-          marker,
-          at: openingAt(cell),
-          outward,
-          size: 10,
-          gap: 1.5,
-          // Lighter than the walls: at this scale a wall-weight stroke closes
-          // the cheese wedge into a solid triangle.
-          stroke: Math.max(opts.stroke * 0.5, 0.35),
-        },
-        paper,
-      )) {
-        strokes.push({
-          commands: part.commands,
-          width: part.width,
-          ...(part.fill === true ? { fill: true } : {}),
-        })
-      }
+  const set = markerSet(opts.markers)
+  for (const [cell, marker, inward] of [
+    [maze.start, set.start, true],
+    [maze.end, set.end, false],
+  ] as const) {
+    if (marker === null) continue
+    const outward = grid.openingNormal(cell)
+    if (outward === null) continue
+    for (const part of placeMarker(
+      {
+        marker,
+        at: openingAt(cell),
+        outward,
+        // Both arrows show the direction of travel, so the one at the entrance
+        // points into the maze and the one at the exit points out of it.
+        facing: inward ? { x: -outward.x, y: -outward.y } : outward,
+        size: MARKER_SIZE,
+        gap: MARKER_GAP,
+        // Lighter than the walls: at this scale a wall-weight stroke closes
+        // the cheese wedge into a solid triangle. On an inked sheet that goes
+        // the other way — a half-weight white line on black is a hairline — so
+        // there it keeps the full weight.
+        stroke: opts.inkOutside === true ? opts.stroke : Math.max(opts.stroke * 0.5, 0.35),
+      },
+      paper,
+    )) {
+      strokes.push({
+        commands: part.commands,
+        width: part.width,
+        // On an inked sheet the marker sits on black, so it has to be drawn in
+        // the paper's colour or it is simply not there.
+        ...(opts.inkOutside === true ? { light: true } : {}),
+        ...(part.fill === true ? { fill: true } : {}),
+      })
     }
   }
 

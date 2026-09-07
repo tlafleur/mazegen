@@ -50,7 +50,8 @@ export function sheetToSvg(
     const d = toSvgPath(s.commands)
     const paint = s.light === true ? '#fff' : ink
     if (s.fill === true) {
-      body += `<path d="${d}" fill="${paint}" stroke="none"/>`
+      const rule = s.evenOdd === true ? ' fill-rule="evenodd"' : ''
+      body += `<path d="${d}" fill="${paint}" stroke="none"${rule}/>`
       continue
     }
     const dash = s.dash ? ` stroke-dasharray="${f(s.dash[0])} ${f(s.dash[1])}"` : ''
