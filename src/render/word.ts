@@ -200,6 +200,9 @@ export interface WordOptions {
 
 const RASTER_WIDTH = 480
 
+/** Thinnest a letter's limb may be, in cells, before it stops holding a maze. */
+const MIN_LIMB = 2.4
+
 /**
  * Draw a word into a bitmap covering the grid's box.
  *
@@ -207,7 +210,7 @@ const RASTER_WIDTH = 480
  * child should be able to type any word rather than pick from a list. Returns
  * null where there is no canvas — the caller falls back to a plain shape.
  */
-export function rasterizeWord(text: string, aspect: number): Bitmap | null {
+export function rasterizeWord(text: string, aspect: number, cellsAcross: number): Bitmap | null {
   const w = RASTER_WIDTH
   const h = Math.max(1, Math.round(w * aspect))
 
@@ -233,19 +236,38 @@ export function rasterizeWord(text: string, aspect: number): Bitmap | null {
   // actually loaded.
   const cap = capHeight(ctx)
 
-  // A word set on one line across a portrait page leaves four fifths of it
-  // blank and the letters too small to hold a maze. Try every number of lines
-  // and take whichever gives a block closest to the shape of the page.
-  const lines = bestLayout(text, aspect, (t) => ctx.measureText(t).width / 100, cap)
+  const lines = bestLayout(
+    text,
+    aspect,
+    (t) => ctx.measureText(t).width / 100,
+    cap,
+    minReadableSize(cap, cellsAcross),
+  )
   const widest = Math.max(...lines.map((t) => ctx.measureText(t).width / 100))
   const blockH = blockHeight(lines.length, cap)
 
-  const size = Math.min((w * 0.94) / widest, (h * 0.94) / blockH)
-  ctx.font = face.replace('100px', `${Math.max(8, size)}px`)
+  // Whichever of the two constraints binds sets the type size; the other axis
+  // then has slack, and the letters are stretched into it rather than left
+  // floating in white space. A word maze is display type, so a name set half
+  // again as tall as it is drawn still reads as the name — and it fills the
+  // page without breaking a four-letter word across two lines.
+  const byWidth = (w * FILL) / widest
+  const byHeight = (h * FILL) / blockH
+  const size = Math.min(byWidth, byHeight)
+  const slack = Math.min(Math.max(byWidth, byHeight) / size, MAX_STRETCH)
+  const stretchX = byHeight < byWidth ? slack : 1
+  const stretchY = byWidth < byHeight ? slack : 1
 
-  const step = cap * LINE_SPACING * size
+  ctx.font = face.replace('100px', `${Math.max(8, size)}px`)
+  const step = cap * LINE_SPACING * size * stretchY
   const top = h / 2 - (step * (lines.length - 1)) / 2
-  lines.forEach((line, i) => ctx.fillText(line, w / 2, top + i * step))
+  lines.forEach((line, i) => {
+    ctx.save()
+    ctx.translate(w / 2, top + i * step)
+    ctx.scale(stretchX, stretchY)
+    ctx.fillText(line, 0, 0)
+    ctx.restore()
+  })
 
   const px = ctx.getImageData(0, 0, w, h).data
   const on = new Uint8Array(w * h)
@@ -255,6 +277,35 @@ export function rasterizeWord(text: string, aspect: number): Bitmap | null {
 
 /** Gap from one baseline to the next, as a multiple of cap height. */
 const LINE_SPACING = 1.25
+
+/** Fraction of the box the block of type fills. */
+const FILL = 0.94
+
+/**
+ * How far the letters may be stretched to take up the slack on the other axis.
+ *
+ * A word maze is display type. Set half again as tall as it is drawn, a name
+ * still reads as the name, and it fills a page that one line of unstretched
+ * capitals would leave four fifths empty.
+ */
+const MAX_STRETCH = 1.75
+
+/** Roughly what fraction of its cap height a heavy capital's stem takes. */
+const STEM_RATIO = 0.25
+
+/**
+ * The smallest type size, relative to the page width, whose limbs still hold a
+ * corridor.
+ *
+ * This is what decides whether a word is broken across lines. Dilation makes up
+ * a shortfall of up to a third, so a stem of three quarters of the target is
+ * still recoverable; below that the letters have to be set larger, and the only
+ * way to do that is to use more lines.
+ */
+function minReadableSize(cap: number, cellsAcross: number): number {
+  const stemCells = STEM_RATIO * cap * cellsAcross * (4 / 3)
+  return stemCells > 0 ? MIN_LIMB / stemCells : 0
+}
 
 /**
  * How tall a block of n lines is, in cap heights.
@@ -274,28 +325,27 @@ function capHeight(ctx: CanvasRenderingContext2D): number {
 }
 
 /**
- * How much stacking has to gain before it is worth doing.
+ * Break a word into lines: as few as will still hold a maze.
  *
- * Comparing the shape of the block to the shape of the page is the obvious rule
- * and it is wrong: on a landscape sheet it set SAM as "SA" over "M", which uses
- * the middle third of a wide page and is not how anyone writes a name. Sizing
- * decides it instead, with a bias toward the fewest lines — an extra line has to
- * make the letters at least a quarter bigger to earn itself.
- */
-const STACK_GAIN = 0.8
-
-/**
- * Break a word into lines, and pick the number that makes the letters biggest.
+ * Two earlier rules were both wrong. Matching the block's shape to the page's
+ * set SAM as "SA" over "M" on a landscape sheet. Maximising the letter size
+ * broke EVAN across two lines on a landscape sheet, where all four fit across
+ * perfectly well — stacking always makes the letters bigger, so on its own it
+ * always stacks.
  *
- * Pure, and exported for its own test: the layout decides how large the letters
- * get, and their size decides whether the word survives having a maze carved
- * into it.
+ * A word wants to be on one line. The only reason to break it is that one line
+ * makes the letters too small to carve a maze into, so that is the whole rule:
+ * take the fewest lines whose type is big enough, and if none is, take whatever
+ * is biggest.
+ *
+ * Pure, and exported for its own test.
  */
 export function bestLayout(
   text: string,
   aspect: number,
   widthOf: (s: string) => number,
   cap: number,
+  minSize = 0,
 ): string[] {
   if (text.length === 0) return [text]
 
@@ -311,10 +361,28 @@ export function bestLayout(
   }
   if (scored.length === 0) return [text]
 
-  const best = Math.max(...scored.map((s) => s.size))
-  const chosen = scored.find((s) => s.size >= best * STACK_GAIN) ?? scored[0]
-  return (chosen as { rows: string[] }).rows
+  // When nothing holds a maze — a long word on a coarse grid — get as close as
+  // possible, which means the largest letters rather than the fewest lines.
+  const viable = scored.filter((s) => s.size >= minSize)
+  if (viable.length === 0) {
+    const big = Math.max(...scored.map((s) => s.size))
+    return (scored.find((s) => s.size === big) as { rows: string[] }).rows
+  }
+
+  const fewest = viable[0] as { rows: string[]; size: number }
+
+  // One line unless breaking it buys a great deal. Both thresholds are needed:
+  // without the floor, EVAN on a landscape sheet broke across two lines where
+  // all four fit across perfectly well; without the gain, EVAN on a *portrait*
+  // sheet stayed on one line and left two thirds of the page white. Measured on
+  // EVAN at fine-pen density, stacking is worth 2.0x on a tall sheet and 1.5x
+  // on a wide one, so the bar sits between them.
+  const better = viable.find((s) => s.size >= fewest.size * STACK_GAIN)
+  return (better ?? fewest).rows
 }
+
+/** How much larger stacking has to make the letters before it is worth doing. */
+const STACK_GAIN = 1.7
 
 /** Split into n lines as evenly as possible, longest lines first. */
 function split(text: string, n: number): string[] {
@@ -335,11 +403,11 @@ export function wordShape(text: string, opts: WordOptions): Shape | null {
   const word = text.trim().toUpperCase()
   if (word === '') return null
 
-  const raw = rasterizeWord(word, opts.aspect)
+  const raw = rasterizeWord(word, opts.aspect, opts.cellsAcross)
   if (raw === null) return null
 
   const cellPx = RASTER_WIDTH / opts.cellsAcross
-  const minLimb = opts.minLimb ?? 2.4
+  const minLimb = opts.minLimb ?? MIN_LIMB
 
   // Dilate only by what the letters are actually short of, and never by more
   // than a third of what they already have. Past that the counters of A, O and

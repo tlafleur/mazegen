@@ -7,6 +7,17 @@ import { CAVE_GAP, CLASSIC, MAX_JITTER, jitterOffset, sketchOffset, type Style }
 import { markerSet, placeMarker } from './marker'
 import type { Sheet, SheetLabel, SheetStroke } from './pdf'
 
+/** Twice the area a closed ring encloses, signed. Sign is not used, only size. */
+function enclosedArea(ring: readonly Point[]): number {
+  let sum = 0
+  for (let i = 0; i < ring.length; i++) {
+    const a = ring[i] as Point
+    const b = ring[(i + 1) % ring.length] as Point
+    sum += a.x * b.y - b.x * a.y
+  }
+  return sum / 2
+}
+
 /** The box a marker is drawn in, and its clearance from the outline, in mm. */
 const MARKER_SIZE = 10
 const MARKER_GAP = 1.5
@@ -93,22 +104,42 @@ export function buildSheet(
 
   // Before anything else, so every wall is drawn over the top of it.
   if (opts.inkOutside === true) {
-    // A band hugging the outside of the shape rather than the whole sheet.
-    // Inking the page margin to margin reads beautifully and puts about 85% ink
-    // coverage on the paper, which curls a sheet and empties a cartridge in two
-    // of them; the eye only needs the boundary, not the field.
-    //
-    // Drawn without offsetting any polygon: stroke the outline at twice the
-    // band width, then fill the same outline white, which covers the half of
-    // that stroke lying inside the shape. Two paths, and they agree exactly
-    // because they are the same path.
-    const rings = chainSegments(grid.boundarySegments(), grid.vertexCount).map((ring) =>
-      // Displaced the same way the walls are, or the ink and the outline part
-      // company wherever a style has any jitter.
-      polylineCommands(ring.map(at), radius),
-    )
-    for (const commands of rings) strokes.push({ commands, width: halo * 2 })
-    for (const commands of rings) strokes.push({ commands, width: 0, fill: true, light: true })
+    // Displaced the same way the walls are, or the ink and the outline part
+    // company wherever a style has any jitter.
+    const rings = chainSegments(grid.boundarySegments(), grid.vertexCount).map((r) => r.map(at))
+
+    // A masked grid keeps only its largest connected component, so it has
+    // exactly one outer boundary; every other ring is a hole in the shape —
+    // the counter of an A, the middle of an O.
+    let outer = 0
+    let widest = -1
+    rings.forEach((ring, i) => {
+      const a = Math.abs(enclosedArea(ring))
+      if (a > widest) {
+        widest = a
+        outer = i
+      }
+    })
+
+    const paths = rings.map((ring) => polylineCommands(ring, radius))
+    const outline = paths[outer] as PathCommand[]
+
+    // Outside the shape, a band rather than the whole sheet: inking margin to
+    // margin reads beautifully and puts about 85% coverage on the paper, which
+    // curls a sheet and empties a cartridge in two of them. Drawn without
+    // offsetting any polygon — stroke the outline at twice the band width, then
+    // fill the same outline white, which covers the half of that stroke lying
+    // inside. Two paths, and they agree exactly because they are the same path.
+    strokes.push({ commands: outline, width: halo * 2 })
+    strokes.push({ commands: outline, width: 0, fill: true, light: true })
+
+    // Holes are filled solid, not banded. A band leaves white in the middle of
+    // anything bigger than twice its width, which is most counters at the size
+    // a word maze is set — and the enclosed space inside an A is exactly what
+    // has to go dark for the letter to read.
+    for (let i = 0; i < paths.length; i++) {
+      if (i !== outer) strokes.push({ commands: paths[i] as PathCommand[], width: 0, fill: true })
+    }
   }
 
   if (style.cave === true) {

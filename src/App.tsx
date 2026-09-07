@@ -405,6 +405,7 @@ export default function App() {
 
       <div className="panel">
         <div className="panel-body">
+        <div className="group-label">Preset</div>
         <div className="cards">
           {PRESETS.map((p) => (
             <button
@@ -423,6 +424,11 @@ export default function App() {
             </button>
           ))}
         </div>
+
+        <p className="note preset-note">
+          A preset is a shortcut for two things: how tricky the maze is, and how big its squares
+          are. Set either one by hand under Advanced and the preset simply switches off.
+        </p>
 
         <Group label="Shape" columns={3}>
           {shapes.map((s) => (
@@ -478,8 +484,8 @@ export default function App() {
           ))}
         </Group>
 
-        <details className="grown-up">
-          <summary>Grown-up settings</summary>
+        <details className="advanced">
+          <summary>Advanced</summary>
 
           <Group label="Paper" columns={2}>
             {PAPERS.map((p) => (
@@ -489,7 +495,7 @@ export default function App() {
             ))}
           </Group>
 
-          <Group label="Turned" columns={2}>
+          <Group label="Orientation" columns={2}>
             <Chip on={!wide} onClick={() => setWide(false)}>
               Tall
             </Chip>
@@ -497,6 +503,8 @@ export default function App() {
               Wide
             </Chip>
           </Group>
+
+          <div className="group-label sub">What a preset sets</div>
 
           <Group label="Difficulty" columns={3}>
             {RECIPES.map((r) => (
@@ -514,14 +522,13 @@ export default function App() {
             ))}
           </Group>
 
-          <Group label="Show" columns={3}>
-            <Chip on={showSolution} onClick={() => setShowSolution((v) => !v)}>
-              Answer
+          <div className="group-label sub">On the printed sheet</div>
+
+          <Group label="Background" columns={2}>
+            <Chip on={!inkOutside} onClick={() => setInkOutside(false)}>
+              Plain
             </Chip>
-            <Chip on={calibration} onClick={() => setCalibration((v) => !v)}>
-              Ruler
-            </Chip>
-            <Chip on={inkOutside} onClick={() => setInkOutside((v) => !v)}>
+            <Chip on={inkOutside} onClick={() => setInkOutside(true)}>
               Filled
             </Chip>
           </Group>
@@ -532,6 +539,15 @@ export default function App() {
                 {m.label}
               </Chip>
             ))}
+          </Group>
+
+          <Group label="Show" columns={2}>
+            <Chip on={showSolution} onClick={() => setShowSolution((v) => !v)}>
+              Answer
+            </Chip>
+            <Chip on={calibration} onClick={() => setCalibration((v) => !v)}>
+              Ruler
+            </Chip>
           </Group>
 
           <div className="meta">
@@ -545,9 +561,9 @@ export default function App() {
           </div>
 
           <p className="note">
-            <b>Filled</b> inks the page around the maze, which is what makes a word readable — at
-            cell scale the letters are corridors like any other, and it is the outside that says
-            where they end. It uses a great deal of toner on a whole sheet.
+            <b>Filled</b> inks around the maze and inside any enclosed space — the middle of an A,
+            the hole in an O — which is what makes a word readable, since at cell scale its letters
+            are corridors like any other.
           </p>
 
           <p className="note">
