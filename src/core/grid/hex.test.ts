@@ -112,7 +112,7 @@ describe('HexGrid geometry', () => {
         const nb = g.neighbourAcross(c, d)
         if (nb === -1) continue
         const b = g.cellCenter(nb)
-        const n = g.faceNormal(d)
+        const n = g.faceNormal(c, d)
         expect((b.x - a.x) / pitch).toBeCloseTo(n.x, 9)
         expect((b.y - a.y) / pitch).toBeCloseTo(n.y, 9)
       }

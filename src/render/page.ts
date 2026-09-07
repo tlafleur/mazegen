@@ -111,4 +111,5 @@ export function oriented(paper: Paper, wide: boolean): Paper {
 
 export const SQUARES: CellKind = { id: 'square', label: 'Squares' }
 export const HEXAGONS: CellKind = { id: 'hex', label: 'Hexagons' }
-export const CELL_KINDS: readonly CellKind[] = [SQUARES, HEXAGONS]
+export const RINGS: CellKind = { id: 'polar', label: 'Rings' }
+export const CELL_KINDS: readonly CellKind[] = [SQUARES, HEXAGONS, RINGS]

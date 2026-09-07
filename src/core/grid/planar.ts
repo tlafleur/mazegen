@@ -47,8 +47,18 @@ export interface BaseGrid extends Topology {
   readonly width: number
   readonly height: number
   readonly vertexCount: number
-  /** Sides per cell: four for squares, six for hexagons. */
+  /**
+   * Face slots per cell — the most any cell has.
+   *
+   * On squares and hexagons every cell has exactly this many. On a polar grid a
+   * cell has three, four or five and the middle has as many as the first ring,
+   * so `faces` is the largest and `hasFace` says which of the slots are real
+   * for a given cell. Without that, an unused slot looks exactly like a face
+   * with nothing across it — which is to say, like the edge of the maze.
+   */
   readonly faces: number
+  /** Whether this cell has a face in this slot at all. Default: all of them. */
+  hasFace?(cell: CellId, dir: number): boolean
   vertexPos(vertex: number): Point
   cellCenter(cell: CellId): Point
   /** The cell containing a point, or -1 outside the grid. */
@@ -59,8 +69,14 @@ export interface BaseGrid extends Topology {
   faceSegment(cell: CellId, dir: number): Segment
   /** Midpoint of one face of a cell. */
   faceMidpoint(cell: CellId, dir: number): Point
-  /** Outward unit normal of a face, in page coordinates where y grows down. */
-  faceNormal(dir: number): Point
+  /**
+   * Outward unit normal of one face of a cell, y growing down.
+   *
+   * Takes the cell because on a polar grid it has to: the outward face of a
+   * ring cell points away from the centre, so which way "out" is depends on
+   * where the cell sits, not only on which of its faces you name.
+   */
+  faceNormal(cell: CellId, dir: number): Point
   /** The wall this edge draws when left closed. */
   wallSegment(edge: EdgeId): Segment
   /** Rows and columns, for the carvers that need them; null when there are none. */

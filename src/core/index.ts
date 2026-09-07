@@ -2,6 +2,7 @@ export type { CellId, EdgeId, Maze, RowStructured, Topology } from './types'
 export { hashSeed, makeRng, type Rng } from './rng'
 export { SquareGrid } from './grid/square'
 export { HexGrid, hexGridSize } from './grid/hex'
+export { PolarGrid, polarGridSize } from './grid/polar'
 export { MaskedGrid } from './grid/masked'
 export {
   EAST,

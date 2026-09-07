@@ -125,8 +125,8 @@ export class MaskedGrid implements Topology, PlanarGrid {
     let best = -1
     let bestDot = -Infinity
     for (let dir = 0; dir < this.base.faces; dir++) {
-      if (this.neighbourAcross(cell, dir) !== -1) continue
-      const nrm = this.base.faceNormal(dir)
+      if (!this.isFace(cell, dir) || this.neighbourAcross(cell, dir) !== -1) continue
+      const nrm = this.base.faceNormal(this.toBase[cell] as CellId, dir)
       const dot = ox * nrm.x + oy * nrm.y
       if (dot > bestDot) {
         bestDot = dot
@@ -134,6 +134,11 @@ export class MaskedGrid implements Topology, PlanarGrid {
       }
     }
     return best
+  }
+
+  /** Whether the base grid gives this cell a face in this slot at all. */
+  private isFace(cell: CellId, dir: number): boolean {
+    return this.base.hasFace?.(this.toBase[cell] as CellId, dir) ?? true
   }
 
   /** The cell across a face, or -1 when the shape ends there. */
@@ -186,7 +191,7 @@ export class MaskedGrid implements Topology, PlanarGrid {
     for (let c = 0; c < this.cellCount; c++) {
       const opening = openAt.includes(c) ? (this.openFace[c] as number) : -1
       for (let dir = 0; dir < this.base.faces; dir++) {
-        if (this.neighbourAcross(c, dir) !== -1 || dir === opening) continue
+        if (!this.isFace(c, dir) || this.neighbourAcross(c, dir) !== -1 || dir === opening) continue
         out.push(this.base.faceSegment(this.toBase[c] as CellId, dir))
       }
     }
@@ -207,7 +212,7 @@ export class MaskedGrid implements Topology, PlanarGrid {
 
   openingNormal(cell: CellId): Point | null {
     const dir = this.openFace[cell] as number
-    return dir === -1 ? null : this.base.faceNormal(dir)
+    return dir === -1 ? null : this.base.faceNormal(this.toBase[cell] as CellId, dir)
   }
 
   /** Cells with at least one face on the outline. */

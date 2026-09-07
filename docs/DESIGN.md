@@ -279,9 +279,49 @@ which knew only about rounding and jitter — so the moment Sketch and Cave exis
 a plain Classic maze. The icons are built by the real renderer now. An icon that can disagree with
 what it is picking is worse than no icon at all.
 
-### Still to come
 
-- **Polar** — a third `BaseGrid`, with rings subdivided as they grow outward.
+### Rings: the third grid, and the two things it does not fit
+
+Concentric rings, each subdivided into cells. A ring's cells get physically wider the further out
+they sit, so a fixed subdivision would give slivers at the middle and rooms at the rim; each ring
+keeps the previous ring's count until a cell has grown about twice as wide as it is deep, then
+multiplies. Every cell stays roughly square in the only sense that matters — a corridor a crayon
+fits down, at every radius.
+
+Hexagons cost one honest refactor. Rings cost two smaller ones, both because a polar cell is not
+like the others:
+
+**A cell's faces are not all the same, and there are not always the same number of them.** A ring
+cell has three, four or five; the middle has as many as the first ring. `faces` is the largest any
+cell has, and `BaseGrid` gained `hasFace(cell, dir)` so a grid can say which of the slots are real.
+Without it an unused slot looks exactly like a face with nothing across it — which is to say, like
+the edge of the maze: the first render reported 331 cells on the rim of a maze whose outer ring has
+48, and every one of those phantom faces drew a wall from a wrongly-wrapped vertex.
+
+**Which way is out depends on where the cell is**, not only on which face you name, so `faceNormal`
+takes the cell. Squares and hexagons ignore it.
+
+Two things it shares with the rest by construction. Its walls are arcs, drawn as one chord per cell
+face — the deviation is at most an eighth of the pitch at the middle and less further out, and
+every style except Classic rounds the joints back into curves, so it reads as circular rather than
+polygonal. And the entrance and exit come out where they always do, from `farthestBoundaryPair` on
+the rim, so both ends have somewhere outside for a marker; a classic polar maze puts the goal at
+the centre, and that would have needed a special case for no gain.
+
+**`passageGap` is not a whole cell here.** The tight spot is always a ring where the count doubles:
+a radial passage crossing outward runs alongside an arc in the finer ring beyond it. Measured by
+brute force over every pair of passages at 3, 5, 8, 12 and 20 rings, the closest approach falls
+from 0.827 × pitch to 0.756 and settles; the grid claims 0.75, and a test measures the real thing
+against that claim at every size rather than trusting the constant.
+
+Difficulty stays calibrated without retuning: averaged over five seeds at pencil density, the five
+levels score 0.30, 0.34, 0.48, 0.73, 0.72 on rings against 0.24, 0.35, 0.47, 0.53, 0.72 on squares.
+Levels 4 and 5 land on top of each other — braiding is U-shaped (§4) and its bottom sits elsewhere
+on this grid — so the top two steps are not distinguishable here. Worth knowing; not worth a second
+calibration table.
+
+The one real cost is the page: a disc on a rectangle leaves the ends of the sheet empty, and there
+is no arrangement that does not.
 
 ## 6a. Word mazes
 
@@ -613,8 +653,8 @@ now, which fixes the solution's direction as well as the drawings.
    What it cost, and the two placement bugs it exposed, are in §7.
 2. ~~**On-screen solving.**~~ **Done.** Printing needs an adult *and* a printer, so most of the
    time what a child does with an iPad is play. See §8 for what the rules turned out to be.
-3. ~~Hex grid.~~ **Done** — see below. Print queue. Polar grid. Sketch and Cave styles. Letter and
-   name mazes.
+3. ~~Hex grid. Polar grid. Sketch and Cave styles. Letter and name mazes.~~ **Done** — see above.
+   Print queue is what remains.
 
 **Phase 3**
 Batch booklet export — "20 pages, increasing difficulty" as one PDF, nearly free once the writer

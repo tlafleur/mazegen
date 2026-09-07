@@ -1,5 +1,6 @@
 import { SquareGrid } from '../core/grid/square'
 import { HexGrid } from '../core/grid/hex'
+import { PolarGrid } from '../core/grid/polar'
 import { MaskedGrid } from '../core/grid/masked'
 import type { Shape } from '../core/grid/mask'
 import { carveAtLevel } from '../core/difficulty'
@@ -10,7 +11,7 @@ import { polylinePath, type Style } from './style'
 import { buildSheet } from './sheet'
 import { sheetToSvg } from './svg'
 import type { BaseGrid, Segment } from '../core/grid/planar'
-import { HEXAGONS, type CellKind, type Paper } from './page'
+import { HEXAGONS, RINGS, type CellKind, type Paper } from './page'
 
 function fmt(n: number): string {
   return String(Math.round(n * 100) / 100)
@@ -78,8 +79,12 @@ export function styleThumbnail(style: Style, seed = 4): string {
  * themselves, uncarved, say it in one look.
  */
 export function cellsThumbnail(kind: CellKind): string {
-  const hex = kind.id === HEXAGONS.id
-  const base: BaseGrid = hex ? new HexGrid(3, 3, 10) : new SquareGrid(3, 3, 10)
+  const base: BaseGrid =
+    kind.id === HEXAGONS.id
+      ? new HexGrid(3, 3, 10)
+      : kind.id === RINGS.id
+        ? new PolarGrid(2, 10)
+        : new SquareGrid(3, 3, 10)
   const grid = new MaskedGrid(base, () => true)
 
   const segments: Segment[] = grid.boundarySegments()

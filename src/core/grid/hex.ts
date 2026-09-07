@@ -227,7 +227,7 @@ export class HexGrid implements BaseGrid {
     return this.cellAt(col, r) | 0
   }
 
-  faceNormal(dir: number): Point {
+  faceNormal(_cell: CellId, dir: number): Point {
     return HEX_NORMALS[dir] as Point
   }
 

@@ -1,5 +1,6 @@
 import { SquareGrid } from './core/grid/square'
 import { HexGrid, hexGridSize } from './core/grid/hex'
+import { PolarGrid, polarGridSize } from './core/grid/polar'
 import { MaskedGrid } from './core/grid/masked'
 import { shapeLibrary, type Shape } from './core/grid/mask'
 import { carveAtLevel, type Level } from './core/difficulty'
@@ -7,7 +8,15 @@ import { measure, type MazeMetrics } from './core/metrics'
 import { makeRng } from './core/rng'
 import { solve } from './core/analyze'
 import type { CellId, Maze } from './core/types'
-import { DEFAULT_MARGIN, HEXAGONS, gridSizeFor, type CellKind, type Paper, type Pen } from './render/page'
+import {
+  DEFAULT_MARGIN,
+  HEXAGONS,
+  RINGS,
+  gridSizeFor,
+  type CellKind,
+  type Paper,
+  type Pen,
+} from './render/page'
 import type { BaseGrid } from './core/grid/planar'
 
 export interface MazeSettings {
@@ -39,6 +48,10 @@ export function baseGridFor(paper: Paper, pen: Pen, cells?: CellKind): BaseGrid 
   if (cells?.id === HEXAGONS.id) {
     const { cols, rows } = hexGridSize(live.width, live.height, pen.pitch)
     return new HexGrid(cols, rows, pen.pitch)
+  }
+  if (cells?.id === RINGS.id) {
+    // A disc, so the shorter side of the sheet is what it can fill.
+    return new PolarGrid(polarGridSize(live.width, live.height, pen.pitch), pen.pitch)
   }
   const { cols, rows } = gridSizeFor(paper, pen.pitch)
   return new SquareGrid(cols, rows, pen.pitch)
