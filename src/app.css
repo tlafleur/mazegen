@@ -377,16 +377,16 @@ body {
   color: #fff;
 }
 
-/* --- grown-up area --- */
+/* --- advanced area --- */
 
 /* Plainly labelled and easy to reach, but not somewhere a child lands by
    accident. Not a lock: an adult should never have to hunt for it. */
-.grown-up {
+.advanced {
   border-top: 1px solid var(--line);
   padding-top: 10px;
 }
 
-.grown-up > summary {
+.advanced > summary {
   min-height: 48px;
   display: flex;
   align-items: center;
@@ -397,13 +397,13 @@ body {
   -webkit-tap-highlight-color: transparent;
 }
 
-.grown-up[open] > summary {
+.advanced[open] > summary {
   margin-bottom: 12px;
 }
 
-.grown-up .group + .group,
-.grown-up .meta,
-.grown-up .note {
+.advanced .group + .group,
+.advanced .meta,
+.advanced .note {
   margin-top: 12px;
 }
 
@@ -470,8 +470,8 @@ body {
   }
 }
 
-/* A grown-up escape hatch: available, but not competing with the big buttons. */
-.grown-up .plain {
+/* An escape hatch: available, but not competing with the big buttons. */
+.advanced .plain {
   margin-top: 12px;
   padding: 10px 14px;
   font: inherit;
@@ -517,4 +517,17 @@ body {
   outline: none;
   border-color: var(--accent);
   background: var(--accent-soft);
+}
+
+/* A quiet heading inside the advanced list, so the controls a preset stands in
+   for are visibly the same two axes rather than a third, competing one. */
+.group-label.sub {
+  margin-top: 18px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+  color: var(--ink);
+}
+
+.preset-note {
+  margin: -4px 0 14px;
 }

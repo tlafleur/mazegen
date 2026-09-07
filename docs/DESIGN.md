@@ -464,7 +464,7 @@ Principles, each with a concrete mechanism:
    can operate the whole primary flow. The words on the cards are for whoever is helping.
 3. **One tap sets difficulty and cell size together.** They are separate axes in the engine, and
    deliberately so, but a child should not have to reason about two things to get a maze. The
-   grown-up area exposes them apart.
+   Advanced area exposes them apart.
 4. **Stepped chips, not sliders**, at a 60 px minimum — above the 44 pt HIG floor.
 5. **Nothing is destructive.** A filmstrip keeps the last six mazes, and tapping one restores it
    whole. It never reorders: a maze a child is looking for should stay where they last saw it.
@@ -473,8 +473,22 @@ Principles, each with a concrete mechanism:
    spreads the cards across the width.
 8. **The preview ignores pointers**, so a hand resting on it does nothing.
 9. **Standalone display**, so there is no address bar to tap out of.
-10. **A grown-up area** — paper, individual difficulty and cell size, answer, ruler, metrics —
-    behind a plainly labelled disclosure. Not a lock; an adult should never have to hunt for it.
+10. **An Advanced area** — paper, orientation, difficulty and cell size, background, markers,
+    answer, ruler, metrics — behind a plainly labelled disclosure. Not a lock; an adult should
+    never have to hunt for it.
+
+### Saying which controls overlap
+
+The five preset cards set two things at once, difficulty and cell size, and both of those are also
+controls of their own. Left unlabelled that reads as three competing scales — "Fiendish" appearing
+in two places, meaning two different things in each.
+
+The cards are headed **Preset**, with a line saying what they are a shortcut for; inside Advanced
+the two controls sit together under **What a preset sets**, apart from the page setup above them
+and the print options below. Filled moved out of Show, where it never belonged, into **Background:
+Plain or Filled**. Nothing changed about what any control does. What changed is that the overlap is
+stated rather than left to be inferred, which is the cheapest fix available and was worth more here
+than any rearrangement.
 
 ### Three things the build corrected
 

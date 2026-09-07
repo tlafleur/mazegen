@@ -182,35 +182,41 @@ describe('bestLayout', () => {
   const widthOf = (t: string): number => t.length * 0.6
   const cap = 0.7
 
-  it('sets a long word on several lines to fill a portrait page', () => {
-    const rows = bestLayout('ABCDEFGH', 1.3, widthOf, cap)
+  it('keeps a word on one line whenever one line is big enough', () => {
+    // What landscape is for: four letters across a wide sheet, not two over two.
+    // One line of EVAN scores 1/(4 x 0.6) = 0.417.
+    expect(bestLayout('EVAN', 0.74, widthOf, cap, 0.3)).toEqual(['EVAN'])
+    expect(bestLayout('ABCDEF', 0.3, widthOf, cap, 0.2)).toEqual(['ABCDEF'])
+    expect(bestLayout('GO', 1.3, widthOf, cap, 0.5)).toEqual(['GO'])
+  })
+
+  it('breaks a word when one line is too small to carve', () => {
+    // Same word, same page: it is the floor that decides.
+    expect(bestLayout('EVAN', 0.74, widthOf, cap, 0.5).length).toBeGreaterThan(1)
+    expect(bestLayout('ABCDEFGH', 1.3, widthOf, cap, 0.3).length).toBeGreaterThan(1)
+  })
+
+  it('breaks a word when stacking buys a great deal of size', () => {
+    // The same four letters on a tall sheet, where one line would leave two
+    // thirds of the page white and stacking doubles the letters.
+    expect(bestLayout('EVAN', 1.34, widthOf, cap, 0.1).length).toBeGreaterThan(1)
+    // And on a wide one, where it would not, they stay together.
+    expect(bestLayout('EVAN', 0.74, widthOf, cap, 0.1)).toEqual(['EVAN'])
+  })
+
+  it('takes the biggest layout when none of them clears the floor', () => {
+    // A very long word on a small grid: still the best available, never empty.
+    const rows = bestLayout('ABCDEFGHIJKL', 1.3, widthOf, cap, 99)
     expect(rows.length).toBeGreaterThan(1)
-    expect(rows.join('')).toBe('ABCDEFGH')
-  })
-
-  it('leaves a short word on one line', () => {
-    // Two wide letters stacked would be far taller than the page.
-    expect(bestLayout('GO', 1.3, widthOf, cap)).toEqual(['GO'])
-  })
-
-  it('uses one line for a wide page', () => {
-    expect(bestLayout('ABCDEF', 0.3, widthOf, cap)).toEqual(['ABCDEF'])
-  })
-
-  it('keeps a short name on one line on a landscape sheet', () => {
-    // The reason landscape exists. Stacking gives marginally larger letters
-    // here and looks nothing like how a name is written.
-    expect(bestLayout('SAM', 0.74, widthOf, cap)).toEqual(['SAM'])
-  })
-
-  it('still stacks when stacking really is much bigger', () => {
-    expect(bestLayout('SAM', 1.35, widthOf, cap).length).toBeGreaterThan(1)
+    expect(rows.join('')).toBe('ABCDEFGHIJKL')
   })
 
   it('never drops or reorders a letter', () => {
     for (const word of ['A', 'HI', 'SAM', 'MAZE', 'ELEPHANT', 'ABCDEFGHIJKL']) {
       for (const aspect of [0.5, 1, 1.3, 2]) {
-        expect(bestLayout(word, aspect, widthOf, cap).join('')).toBe(word)
+        for (const floor of [0, 0.2, 0.5, 99]) {
+          expect(bestLayout(word, aspect, widthOf, cap, floor).join('')).toBe(word)
+        }
       }
     }
   })
