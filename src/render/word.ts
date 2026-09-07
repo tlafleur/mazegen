@@ -124,15 +124,35 @@ export function underline(bmp: Bitmap, thickness: number, bridge = thickness): B
     }
   }
 
-  // A stem between one band and the next, where the two overlap horizontally.
+  // A stem between one band and the next, placed where the two are closest.
+  //
+  // Not simply down the middle, and not simply as far as the next band's first
+  // row: SAM set as "SA" over "M" put the stem at the centre, where an M's top
+  // row is the notch between its stems and there is no ink at all — so the stem
+  // ended in space, the M stayed a separate component, and MaskedGrid dropped
+  // it. Choosing the column where the next band's ink reaches highest lands the
+  // joint on a stroke of the letter instead.
+  const half = Math.max(0, Math.floor((b - 1) / 2))
   for (let k = 1; k < bands.length; k++) {
     const above = bands[k - 1] as (typeof bands)[number]
     const below = bands[k] as (typeof bands)[number]
-    const from = Math.max(above.left, below.left)
-    const to = Math.min(above.right, below.right)
-    const mid = from <= to ? Math.round((from + to) / 2) : Math.round((above.left + above.right) / 2)
-    const half = Math.max(0, Math.floor((b - 1) / 2))
-    for (let j = above.bottom; j <= below.top; j++) {
+    const from = Math.max(above.left + half, below.left + half)
+    const to = Math.min(above.right - half, below.right - half)
+
+    let mid = Math.round((below.left + below.right) / 2)
+    let reach = below.bottom
+    for (let i = Math.max(0, from); i <= Math.min(w - 1, to); i++) {
+      for (let j = below.top; j < reach; j++) {
+        if ((bmp.on[j * w + i] as number) === 0) continue
+        reach = j
+        mid = i
+        break
+      }
+    }
+
+    // The bar along `above`'s foot already spans its full width, so the stem
+    // meets ink at both ends whatever column it lands in.
+    for (let j = above.bottom; j <= reach; j++) {
       for (let i = Math.max(0, mid - half); i <= Math.min(w - 1, mid + half); i++) {
         out[j * w + i] = 1
       }
@@ -218,7 +238,7 @@ export function rasterizeWord(text: string, aspect: number): Bitmap | null {
   // and take whichever gives a block closest to the shape of the page.
   const lines = bestLayout(text, aspect, (t) => ctx.measureText(t).width / 100, cap)
   const widest = Math.max(...lines.map((t) => ctx.measureText(t).width / 100))
-  const blockH = lines.length * cap * LINE_SPACING
+  const blockH = blockHeight(lines.length, cap)
 
   const size = Math.min((w * 0.94) / widest, (h * 0.94) / blockH)
   ctx.font = face.replace('100px', `${Math.max(8, size)}px`)
@@ -236,6 +256,17 @@ export function rasterizeWord(text: string, aspect: number): Bitmap | null {
 /** Gap from one baseline to the next, as a multiple of cap height. */
 const LINE_SPACING = 1.25
 
+/**
+ * How tall a block of n lines is, in cap heights.
+ *
+ * The gaps go *between* the lines: counting n of them adds a gap below the last
+ * line that is not there, which for a single-line word left a quarter of the
+ * page empty and the letters a quarter too small.
+ */
+function blockHeight(lines: number, cap: number): number {
+  return cap * (1 + (lines - 1) * LINE_SPACING)
+}
+
 function capHeight(ctx: CanvasRenderingContext2D): number {
   const m = ctx.measureText('H')
   const cap = (m.actualBoundingBoxAscent + m.actualBoundingBoxDescent) / 100
@@ -243,11 +274,22 @@ function capHeight(ctx: CanvasRenderingContext2D): number {
 }
 
 /**
- * Break a word into the number of lines that best fills the page.
+ * How much stacking has to gain before it is worth doing.
  *
- * Pure, and exported for its own test: the layout is what decides how big the
- * letters get, and how big they get is what decides whether the word is legible
- * once a maze is carved into it.
+ * Comparing the shape of the block to the shape of the page is the obvious rule
+ * and it is wrong: on a landscape sheet it set SAM as "SA" over "M", which uses
+ * the middle third of a wide page and is not how anyone writes a name. Sizing
+ * decides it instead, with a bias toward the fewest lines — an extra line has to
+ * make the letters at least a quarter bigger to earn itself.
+ */
+const STACK_GAIN = 0.8
+
+/**
+ * Break a word into lines, and pick the number that makes the letters biggest.
+ *
+ * Pure, and exported for its own test: the layout decides how large the letters
+ * get, and their size decides whether the word survives having a maze carved
+ * into it.
  */
 export function bestLayout(
   text: string,
@@ -255,20 +297,23 @@ export function bestLayout(
   widthOf: (s: string) => number,
   cap: number,
 ): string[] {
-  let best: string[] = [text]
-  let bestErr = Infinity
+  if (text.length === 0) return [text]
+
+  // Relative type size for each layout, on a page one unit wide and `aspect`
+  // tall: whichever of the two constraints binds first.
+  const scored: { rows: string[]; size: number }[] = []
   for (let n = 1; n <= text.length; n++) {
     const rows = split(text, n)
     if (rows.length !== n) continue
     const widest = Math.max(...rows.map(widthOf))
     if (widest <= 0) continue
-    const err = Math.abs((n * cap * LINE_SPACING) / widest - aspect)
-    if (err < bestErr) {
-      bestErr = err
-      best = rows
-    }
+    scored.push({ rows, size: Math.min(1 / widest, aspect / blockHeight(n, cap)) })
   }
-  return best
+  if (scored.length === 0) return [text]
+
+  const best = Math.max(...scored.map((s) => s.size))
+  const chosen = scored.find((s) => s.size >= best * STACK_GAIN) ?? scored[0]
+  return (chosen as { rows: string[] }).rows
 }
 
 /** Split into n lines as evenly as possible, longest lines first. */

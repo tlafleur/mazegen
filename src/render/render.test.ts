@@ -85,7 +85,7 @@ describe('hexagonal sheets', () => {
     const svg = renderSvg(g.grid, g.maze, g.solution, {
       paper: LETTER,
       stroke: MARKER.stroke,
-      markers: true,
+      markers: 'mouse',
     })
     expect(svg).toContain('width="215.9mm"')
     // Diagonal walls: a square grid emits only axis-aligned segments, so a

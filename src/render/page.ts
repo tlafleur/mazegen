@@ -92,6 +92,23 @@ export interface CellKind {
   readonly label: string
 }
 
+/**
+ * The same paper, turned on its side.
+ *
+ * Everything downstream reads width and height off the `Paper`, so swapping
+ * them is the whole of it: the grid, the PDF's MediaBox, the `@page` rule and
+ * the on-screen sheet all follow. Worth having for a word maze above all — a
+ * word is wide, and on a portrait sheet it has to be broken into lines or set
+ * small.
+ */
+export function landscape(paper: Paper): Paper {
+  return { ...paper, width: paper.height, height: paper.width }
+}
+
+export function oriented(paper: Paper, wide: boolean): Paper {
+  return wide ? landscape(paper) : paper
+}
+
 export const SQUARES: CellKind = { id: 'square', label: 'Squares' }
 export const HEXAGONS: CellKind = { id: 'hex', label: 'Hexagons' }
 export const CELL_KINDS: readonly CellKind[] = [SQUARES, HEXAGONS]

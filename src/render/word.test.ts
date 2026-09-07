@@ -197,6 +197,16 @@ describe('bestLayout', () => {
     expect(bestLayout('ABCDEF', 0.3, widthOf, cap)).toEqual(['ABCDEF'])
   })
 
+  it('keeps a short name on one line on a landscape sheet', () => {
+    // The reason landscape exists. Stacking gives marginally larger letters
+    // here and looks nothing like how a name is written.
+    expect(bestLayout('SAM', 0.74, widthOf, cap)).toEqual(['SAM'])
+  })
+
+  it('still stacks when stacking really is much bigger', () => {
+    expect(bestLayout('SAM', 1.35, widthOf, cap).length).toBeGreaterThan(1)
+  })
+
   it('never drops or reorders a letter', () => {
     for (const word of ['A', 'HI', 'SAM', 'MAZE', 'ELEPHANT', 'ABCDEFGHIJKL']) {
       for (const aspect of [0.5, 1, 1.3, 2]) {

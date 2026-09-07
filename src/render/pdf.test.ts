@@ -324,7 +324,7 @@ describe('toPdfPath', () => {
 describe('renderPdf', () => {
   const shape = shapesFor(LETTER, MARKER)[0] as { id: string; label: string; mask: () => boolean }
   const g = generateMaze({ paper: LETTER, pen: MARKER, level: 3, shape, seed: 'pdf' })
-  const opts = { paper: LETTER, stroke: MARKER.stroke, markers: true, calibration: true }
+  const opts = { paper: LETTER, stroke: MARKER.stroke, markers: 'mouse', calibration: true }
 
   it('produces the same bytes for the same maze', () => {
     expect(renderPdf(g.grid, g.maze, g.solution, opts)).toEqual(

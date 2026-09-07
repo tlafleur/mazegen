@@ -511,6 +511,12 @@ them testable without a browser:
 - A drag is **sampled along its length**, not taken at its endpoint. Pointer events arrive far
   apart when a finger moves quickly; at fine-pen density a single event can span several cells, and
   without sampling a fast swipe would jump straight through a wall.
+- A finger may land **up to three cells ahead**, and the trail walks the passages between. One cell
+  is unforgiving in exactly the place it matters: rounding a corner, a finger cuts across the inside
+  of the turn and its next sample lands in the cell *after* the corner, which is diagonal from the
+  head — so a one-step rule ignores it and the line stalls until you trace the corner squarely. It
+  cannot become a cheat, because every cell of the hop is walked through open passages. Measured: a
+  drag visiting only every other cell of the route completes at three and stalls at one.
 
 The trail is a second SVG laid exactly over the sheet. That needed the preview to have a real box
 rather than `display: contents`, so the sheet is now sized from the stage's own dimensions with a

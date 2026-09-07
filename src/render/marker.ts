@@ -27,6 +27,14 @@ export interface PlacedMarkerPart extends MarkerPart {
 export interface Marker {
   readonly id: string
   readonly parts: readonly MarkerPart[]
+  /**
+   * Turn the drawing to face the way it is placed.
+   *
+   * Off for the mouse and the cheese, which are objects: a mouse rotated to
+   * match a left-hand opening reads as a mouse lying down. On for an arrow,
+   * which is nothing but a direction, and is authored pointing right.
+   */
+  readonly aligned?: boolean
 }
 
 /**
@@ -61,6 +69,27 @@ export const MOUSE: Marker = {
   ],
 }
 
+/**
+ * A plain arrow, drawn pointing right and turned to face where it is placed.
+ *
+ * The alternative to a mouse for anyone who wants the sheet to look less like a
+ * picture book — and the whole marker can be switched off as well.
+ */
+export const ARROW: Marker = {
+  id: 'arrow',
+  aligned: true,
+  parts: [
+    { commands: [{ op: 'M', x: 0.8, y: 5 }, { op: 'L', x: 7.4, y: 5 }] },
+    {
+      commands: [
+        { op: 'M', x: 5.2, y: 2.3 },
+        { op: 'L', x: 9.2, y: 5 },
+        { op: 'L', x: 5.2, y: 7.7 },
+      ],
+    },
+  ],
+}
+
 export const CHEESE: Marker = {
   id: 'cheese',
   parts: [
@@ -83,25 +112,35 @@ export const CHEESE: Marker = {
   ],
 }
 
-/** Scale about the origin, then shift. */
-function place(commands: readonly PathCommand[], scale: number, dx: number, dy: number): PathCommand[] {
-  const x = (v: number): number => v * scale + dx
-  const y = (v: number): number => v * scale + dy
+/** Rotate about the middle of the 10 by 10 box, scale, then move to (cx, cy). */
+function place(
+  commands: readonly PathCommand[],
+  scale: number,
+  cx: number,
+  cy: number,
+  angle: number,
+): PathCommand[] {
+  const cos = Math.cos(angle)
+  const sin = Math.sin(angle)
+  const x = (u: number, v: number): number => cx + (cos * (u - 5) - sin * (v - 5)) * scale
+  const y = (u: number, v: number): number => cy + (sin * (u - 5) + cos * (v - 5)) * scale
   return commands.map((c) => {
     if (c.op === 'Z') return c
-    if (c.op === 'Q') return { op: 'Q', cx: x(c.cx), cy: y(c.cy), x: x(c.x), y: y(c.y) }
+    if (c.op === 'Q') {
+      return { op: 'Q', cx: x(c.cx, c.cy), cy: y(c.cx, c.cy), x: x(c.x, c.y), y: y(c.x, c.y) }
+    }
     if (c.op === 'C') {
       return {
         op: 'C',
-        c1x: x(c.c1x),
-        c1y: y(c.c1y),
-        c2x: x(c.c2x),
-        c2y: y(c.c2y),
-        x: x(c.x),
-        y: y(c.y),
+        c1x: x(c.c1x, c.c1y),
+        c1y: y(c.c1x, c.c1y),
+        c2x: x(c.c2x, c.c2y),
+        c2y: y(c.c2x, c.c2y),
+        x: x(c.x, c.y),
+        y: y(c.x, c.y),
       }
     }
-    return { op: c.op, x: x(c.x), y: y(c.y) }
+    return { op: c.op, x: x(c.x, c.y), y: y(c.x, c.y) }
   })
 }
 
@@ -117,6 +156,12 @@ export interface MarkerPlacement {
   readonly gap: number
   /** Line width at the full requested size; scaled down with the drawing. */
   readonly stroke: number
+  /**
+   * Which way an aligned drawing should point, if not the way the opening
+   * faces. The arrow at the entrance points *into* the maze while the one at
+   * the exit points out of it, because both show the direction of travel.
+   */
+  readonly facing?: Point
 }
 
 /**
@@ -185,10 +230,31 @@ export function placeMarker(
   // the marker shrinks to fit a margin.
   const scale = size / 10
   const width = Math.max(p.stroke * scale, MIN_STROKE)
+  const face = p.facing ?? p.outward
+  const angle = p.marker.aligned === true ? Math.atan2(face.y, face.x) : 0
 
   return p.marker.parts.map((part) => ({
-    commands: place(part.commands, scale, cx - half, cy - half),
+    commands: place(part.commands, scale, cx, cy, angle),
     width,
     ...(part.fill === true ? { fill: true } : {}),
   }))
+}
+
+/** What is drawn at the two ends of a maze. */
+export interface MarkerSet {
+  readonly id: string
+  readonly label: string
+  /** Null at both ends means nothing is drawn. */
+  readonly start: Marker | null
+  readonly end: Marker | null
+}
+
+export const MARKER_SETS: readonly MarkerSet[] = [
+  { id: 'mouse', label: 'Mouse', start: MOUSE, end: CHEESE },
+  { id: 'arrows', label: 'Arrows', start: ARROW, end: ARROW },
+  { id: 'none', label: 'None', start: null, end: null },
+]
+
+export function markerSet(id: string | undefined): MarkerSet {
+  return MARKER_SETS.find((m) => m.id === id) ?? (MARKER_SETS[2] as MarkerSet)
 }

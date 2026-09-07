@@ -12,6 +12,14 @@ export interface SheetStroke {
   /** Fill the path solidly instead of stroking its outline. */
   readonly fill?: boolean
   /**
+   * Fill by the even-odd rule, so nested rings cut holes.
+   *
+   * What lets the page be inked around a shape with one path: a rectangle
+   * covering the sheet, followed by the shape's own outline, leaves the inside
+   * of the shape white without computing any difference of regions.
+   */
+  readonly evenOdd?: boolean
+  /**
    * Draw in white rather than black.
    *
    * Only the Cave style needs this: it strokes the passage graph wide in black
@@ -97,7 +105,7 @@ function contentStream(sheet: Sheet): string {
       if (stroke.dash) parts.push(`[${n2(stroke.dash[0])} ${n2(stroke.dash[1])}] 0 d`)
     }
     parts.push(toPdfPath(stroke.commands))
-    parts.push(stroke.fill === true ? 'f' : 'S')
+    parts.push(stroke.fill === true ? (stroke.evenOdd === true ? 'f*' : 'f') : 'S')
     parts.push('Q')
   }
   parts.push('Q')
