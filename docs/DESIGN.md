@@ -740,3 +740,102 @@ Platform, primary user, and paper size are settled (§1). Still open, none of th
 1. **How much play versus how much printing?** If on-screen solving turns out to be the main activity, the app is a toy that happens to print, and that would argue for pulling it into phase 1. Worth revisiting after the first build is in front of a child.
 2. **Braid ratio for young children.** The mechanism in §4 is sound; the specific ratio that keeps a five-year-old moving without letting them circle indefinitely should be tuned against real children rather than chosen from theory.
 3. **How many shapes before variety stops mattering?** Mask authoring is the one part of this that scales linearly with effort rather than being a one-time cost. Six good shapes may beat twenty mediocre ones.
+
+## 13. What to build next
+
+From a brainstorm after the polar grid shipped, prompted by the older child asking for harder
+mazes. The order below is agreed; the rest is recorded so it does not have to be rediscovered.
+
+Order: **harder presets → isometric style → weave mazes → the Escher group.**
+
+One sequencing note: settle the weave data model before building the isometric extrusion, even
+though weave is built second. A bridge needs a height, and the extrusion is where a height first
+has to exist. Deciding it late means rewriting the extrusion.
+
+### 1. Harder presets
+
+Level 5 is the top of the model in §4 — a plain backtracker, no braiding, no dead-end cap. A sixth
+row of the same shape has nothing left to vary, and on rings levels 4 and 5 already measure the
+same. Harder means new axes, not another rung:
+
+**Cell shape in the preset.** A preset pairs a difficulty level with a pen size; the cell shape is
+a separate control and no preset touches it. Level 5 on hexagons at `FINE` is harder than Fiendish
+with no engine change at all — six neighbours, no four-way junctions, no long straight corridors to
+sight down. This is the cheapest genuine step available.
+
+**Braiding near 1.0.** §4 established that braiding is U-shaped: opening a few dead ends makes a
+maze easier, opening most of them makes it harder again. Every level here sits on the near side of
+that curve, from 0.3 down to 0. A level on the far side — 0.85 or above — is a different puzzle
+rather than a harder one. Dead ends are how a maze tells a solver they are wrong; remove nearly all
+of them and the whole off-route area becomes one connected loop system that gives no feedback, and
+the first strategy a child learns (find the dead ends, cross them off) stops paying. Expect the
+measured score to *under*-rate this, because loops have no off-route depth to count. It needs a
+printed test and a human, not a number.
+
+**Decoy exits.** Three or four extra openings on the rim that dead-end a cell or two in. A
+post-carve step, and a toggle rather than a preset.
+
+**Wilson's carver as a texture choice.** It is built and tested but deliberately absent from the
+ladder: it scores within a few percent of Kruskal, so it cannot separate two levels. What it is
+instead is the only unbiased carver of the four — every possible maze on the grid is equally
+likely, where the others each have a grain from the way they walk. That belongs next to the style
+picker as a flavour, not on the difficulty scale.
+
+**Explicitly rejected: a pen size below `FINE`'s 4 mm.** It is the obvious lever and it is the
+wrong one. It raises the absolute amount of work without raising the measured score, and 3 mm
+corridors are cramped for a child holding a pencil.
+
+### 2. Isometric style
+
+Project the square lattice onto a 2:1 rhombus lattice and extrude each wall upward into a
+parallelogram, drawing back to front by row. The topology does not change: only `vertexPos` and the
+wall drawing do, which makes this renderer-only work in the sense §3 intended. It inherits every
+shape, carver and difficulty already built, and it shares its extrusion with weave bridges and with
+any later first-person mode.
+
+### 3. Weave mazes
+
+Passages that cross over and under, the lower one drawn broken. The largest genuine step in
+difficulty available, and the one that makes adults slow down. It is a topology change — an "over"
+cell carries two passages through it that do not connect — so a new `BaseGrid` or a wrapper over
+`SquareGrid`, plus a renderer that breaks the under-passage. No carver changes. It reads better in
+isometric than flat, and better still in first person, which is why it sits between those two items
+rather than before both.
+
+### 4. The Escher group
+
+Four separate things at rising cost, and the cheap ones are worth having on their own:
+
+- **Impossible frame.** An ordinary maze inside a Penrose triangle or an impossible staircase. A
+  mask plus a decorative border, and the maze itself is unchanged.
+- **Relativity.** Multi-floor grid plus the isometric renderer, with stairs joining floors at angles
+  that read as impossible. This is the combination that actually looks Escher-ish, and it doubles as
+  the hardest maze in the app.
+- **Hyperbolic disc.** Cells shrinking toward the rim, Poincaré style. Structurally the closest
+  thing to `PolarGrid` — rings that subdivide — with hyperbolic radii and a {p,q} tiling. Prints
+  well in black and white.
+- **Tessellation.** Stamp a repeating motif head-to-tail along each corridor instead of a plain
+  tunnel, reusing the Cave renderer's habit of drawing passages rather than walls. The alternative
+  reading — Escher's interlocking creatures as the cell outlines — is an art job, not a code job.
+
+### Accepted, not scheduled
+
+- **Multi-floor and poster mazes as toggles**, alongside weave and decoy exits, rather than as
+  presets. Poster mazes are a viewport per page; `buildPdf` already takes an array of sheets.
+- **A first-person play mode** — a third renderer on the same data, after SVG and PDF.
+  `wallSegment` plus `vertexPos` is the whole geometry step and works on every grid, and `trail.ts`
+  is already the movement-legality layer. Cell-by-cell hops rather than free roam, so a child cannot
+  wedge themselves in a wall and the six hex directions need no special case. The honest cost is
+  controls, camera feel and motion comfort, none of which the measure-it-and-look method catches.
+  Cheap probe first: a press-and-hold peek from the trail head in the existing 2D play mode.
+- **Race sheet** — the same maze twice on one landscape page, two children, one timer. Wanted with
+  a car and racetrack treatment.
+- **Answer on the back**, as page 2 of the same PDF, so an adult can check without solving it.
+- **Maze of the day**, seeded from the date, with a streak.
+- **Draw your own shape** on screen as a mask. `word.ts` already proves bitmap-to-mask works.
+
+### Shelved
+
+Seasonal themes, Halloween included. Not rejected on merit — a theme is a set of masks, a marker
+pair and a default style, and all three are data rather than code, so the cost does not grow by
+waiting.
