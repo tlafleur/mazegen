@@ -1,11 +1,13 @@
 import { describe, expect, it } from 'vitest'
 import { SquareGrid } from './grid/square'
+import { MaskedGrid } from './grid/masked'
+import { circleMask } from './grid/mask'
 import { carveBacktracker } from './carve/backtracker'
 import { carveKruskal } from './carve/kruskal'
 import { carveWilson } from './carve/wilson'
 import { carveSidewinder } from './carve/sidewinder'
 import { braid, capDeadEndRun } from './braid'
-import { measure, openDegree } from './metrics'
+import { fillDeadEnds, measure, openDegree } from './metrics'
 import { reachableCount, solve } from './analyze'
 import { makeRng } from './rng'
 import { LEVELS, carveAtLevel, recipeFor, type Level } from './difficulty'
@@ -270,5 +272,96 @@ describe('level recipes', () => {
       const b = carveAtLevel(grid, makeRng('same'), level)
       expect(Array.from(a.open)).toEqual(Array.from(b.open))
     }
+  })
+})
+
+describe('extras', () => {
+  const grid = new SquareGrid(31, 42, 6)
+  const plain = carveAtLevel(grid, makeRng('x'), 5)
+  const loopy = carveAtLevel(grid, makeRng('x'), 5, 0, grid.cellCount - 1, { loops: true })
+
+  const deadEnds = (maze: Maze): number => {
+    let n = 0
+    for (let c = 0; c < maze.topo.cellCount; c++) if (openDegree(maze, c) === 1) n++
+    return n
+  }
+
+  describe('loops', () => {
+    it('leaves no dead ends at all', () => {
+      expect(deadEnds(plain)).toBeGreaterThan(50)
+      expect(deadEnds(loopy)).toBe(0)
+    })
+
+    it('takes away the shortcut a solver learns first', () => {
+      // Rubbing out dead ends solves a perfect maze outright — what survives is
+      // exactly the route, which is why the first number is the route length.
+      // With every dead end already open there is nothing to rub out, so the
+      // whole page stays live. This is the entire case for the option.
+      expect(fillDeadEnds(plain)).toBe((solve(plain) as number[]).length)
+      expect(fillDeadEnds(loopy)).toBe(grid.cellCount)
+    })
+
+    it('lowers the difficulty score rather than raising it', () => {
+      // Measured, and stated here so nobody ships it as a harder level: opening
+      // every dead end also opens every shortcut, and the shortest route
+      // collapses. It is a different puzzle, not a harder one. See §4.
+      const scoreOf = (m: Maze): number => measure(m, solve(m) as number[]).score
+      expect(scoreOf(loopy)).toBeLessThan(scoreOf(plain))
+      expect((solve(loopy) as number[]).length).toBeLessThan(
+        (solve(plain) as number[]).length / 2,
+      )
+    })
+
+    it('leaves the maze solvable and every cell reachable', () => {
+      expect(solve(loopy)).not.toBeNull()
+      expect(reachableCount(loopy)).toBe(grid.cellCount)
+    })
+
+    it('applies at every level, on top of whatever that level braids', () => {
+      for (const level of LEVELS) {
+        const m = carveAtLevel(grid, makeRng(`l${level}`), level, 0, grid.cellCount - 1, {
+          loops: true,
+        })
+        expect(deadEnds(m)).toBe(0)
+        expect(solve(m)).not.toBeNull()
+      }
+    })
+  })
+
+  describe('carver override', () => {
+    it('carves something else than the level would have', () => {
+      const own = carveAtLevel(grid, makeRng('c'), 5)
+      const wilson = carveAtLevel(grid, makeRng('c'), 5, 0, grid.cellCount - 1, {
+        carver: 'wilson',
+      })
+      expect(Array.from(wilson.open)).not.toEqual(Array.from(own.open))
+      expect(reachableCount(wilson)).toBe(grid.cellCount)
+      expect(solve(wilson)).not.toBeNull()
+    })
+
+    it('still braids and caps to the level it was asked for', () => {
+      // The override replaces how the maze is carved, not what the level means.
+      const m = carveAtLevel(grid, makeRng('c1'), 1, 0, grid.cellCount - 1, { carver: 'wilson' })
+      expect(measure(m, solve(m) as number[]).maxDeadEndRun).toBeLessThanOrEqual(3)
+    })
+
+    it('falls back on a grid with no rows, without borrowing level 1 braiding', () => {
+      // Sidewinder needs full rows. Asking for it on a masked shape has to
+      // degrade to something that works — but at level 5, which braids not at
+      // all, it must not pick up the compensating braid level 1 carries.
+      const shaped = new MaskedGrid(grid, circleMask)
+      const m = carveAtLevel(shaped, makeRng('sw'), 5, 0, shaped.cellCount - 1, {
+        carver: 'sidewinder',
+      })
+      expect(solve(m)).not.toBeNull()
+      expect(reachableCount(m)).toBe(shaped.cellCount)
+      expect(measure(m, solve(m) as number[]).deadEnds).toBeGreaterThan(20)
+    })
+
+    it('is deterministic', () => {
+      const a = carveAtLevel(grid, makeRng('w'), 3, 0, 1, { carver: 'wilson', loops: true })
+      const b = carveAtLevel(grid, makeRng('w'), 3, 0, 1, { carver: 'wilson', loops: true })
+      expect(Array.from(a.open)).toEqual(Array.from(b.open))
+    })
   })
 })

@@ -200,6 +200,88 @@ too little route to shorten — so levels 3 to 5 compress. Level 5 is 4.1× leve
 only 1.75× on crayon. That is a limit of how much maze fits on a page at that corridor width, not
 a defect in the recipes.
 
+### Past the ceiling: what to vary once level 5 runs out
+
+Level 5 is a plain backtracker with no braiding and no cap. There is nothing left in the recipe
+shape to turn, so a sixth rung of the same kind would have been a relabelling. Three axes were
+measured instead, all of them independent of the five levels and composable with any of them.
+
+**Where the maze begins and ends.** `farthestBoundaryPair` picks the two outline cells furthest
+apart on the *uncarved* grid — a property of the shape, so the entrance stays put however the maze
+is recarved. `farthestOpenPair` runs the same double BFS through the passages the carver actually
+left, which is the longest route the finished maze contains. Measured on Letter at a 4 mm pitch:
+
+| Grid | Cells | Route, shape ends | Route, longest | Score, shape ends | Score, longest |
+|---|---|---|---|---|---|
+| Squares | 2961 | 988 | 1219 | 0.683 | 0.761 |
+| Hexagons | 3384 | 890 | 1274 | 0.621 | 0.726 |
+| Rings | 1435 | 310 | 519 | 0.710 | 0.789 |
+
+It is worth 46% on the route and 18% on expected work, and it is the only axis found that takes
+the score above what the recipes reach on their own. The cost is the property it gives up: the
+entrance moves when the maze is recarved. That is why it is an option rather than the default —
+stability is worth more at the easy end and length is worth more at the hard end.
+
+**Opening every dead end.** Braiding at ratio 1 leaves a maze made entirely of loops. The
+composite score says this is much *easier*, and the score is right about what it measures: opening
+every dead end also opens every shortcut, and on a 2961-cell grid the shortest route falls from
+809 cells to 153.
+
+But the score is not the only thing worth measuring. `fillDeadEnds` rubs out every dead end
+repeatedly — the shortcut a solver learns first, since a corridor ending in a wall cannot be on
+the route. On a perfect maze it terminates with *exactly* the solution, which is a clean check on
+both the metric and the carver:
+
+| Braid | Cells surviving the fill | Shortest route | Score |
+|---|---|---|---|
+| 0 | 809 (27%) | 809 | 0.649 |
+| 0.3 | 2324 (78%) | 287 | 0.344 |
+| 0.8 | 2825 (95%) | 165 | 0.341 |
+| 0.95 | 2932 (99%) | 157 | 0.368 |
+| 1 | 2961 (100%) | 153 | 0.355 |
+
+So a fully braided maze is harder for a child who wanders — nothing can be ruled out, and nothing
+tells them they are wrong — and easier for one who is systematic. That is a real thing to want and
+not a rung on a ladder, so it ships as an option labelled for what it does and stays off the
+preset cards. `fillDeadEnds` is deliberately not folded into `measure`: the two disagree about
+braiding on purpose, and averaging them would hide the finding rather than report it.
+
+**False gaps in the outline.** A printed maze gives away one thing no maze on a screen does: both
+openings are visible from across the room, so the exit can be found before the route is. Extra
+gaps take that away. They are cut in the drawing, not carved — the graph is untouched, the score
+is unchanged, and the way out is still whichever gap the finish marker is drawn at. Dead ends are
+preferred as the cells to open, so following one to the border really is a wasted trip, and every
+gap is held at least 14 mm from the real openings and from the others: nearer, and the mouse drawn
+outside the entrance would sit beside a hole it did not come through.
+
+Nothing here is captured by `score`, which is the point of writing it down. It is the same
+situation as sidewinder, whose unbroken top row hands a solver a plan that no structural measure
+notices, and which is pinned to level 1 by name for that reason.
+
+### What the preset ladder measures
+
+Expected work is `score × cellCount`: the score is per cell, so a maze twice the size at the same
+score is twice the walk. Over 20 seeds each, on Letter:
+
+| Preset | Level | Cells | Pitch | Route | Work |
+|---|---|---|---|---|---|
+| Tiny | 1 | 315 | 12 mm | 41 | 143 |
+| Little | 2 | 588 | 9 mm | 68 | 242 |
+| Big kid | 3 | 1302 | 6 mm | 170 | 593 |
+| Tricky | 4 | 1302 | 6 mm | 275 | 741 |
+| Fiendish | 5 | 2961 | 4 mm | 864 | 1943 |
+| Brutal | 5 | 2961 | 4 mm | 1265 | 2289 |
+| Bonkers | 5 | 3384 | 4 mm | 1339 | 2499 |
+
+The last two are level 5 as well, and differ only in where the maze runs and what a cell is shaped
+like. Brutal is worth 18% over Fiendish; Bonkers is worth 9% over Brutal, from 14% more cells at a
+slightly lower score each. The second step is the smaller one on the measure, and it leans partly
+on something no measure here captures — a hexagon grid has no four-way junctions, so there are no
+free choices and no straight corridors to sight down.
+
+A pen size below 4 mm was the obvious way to make the numbers bigger and was rejected: it raises
+absolute work without raising the score, and a 3 mm corridor is cramped for a child with a pencil.
+
 ## 5. Line styles
 
 All styles are pure functions of the wall geometry plus a style seed. Changing style never changes
@@ -502,9 +584,9 @@ Principles, each with a concrete mechanism:
 2. **Pictures, not words, and no numbers.** Preset cards show a real maze generated at those
    settings; difficulty is filled dots; shapes and line styles are drawn, not named. A pre-reader
    can operate the whole primary flow. The words on the cards are for whoever is helping.
-3. **One tap sets difficulty and cell size together.** They are separate axes in the engine, and
-   deliberately so, but a child should not have to reason about two things to get a maze. The
-   Advanced area exposes them apart.
+3. **One tap sets everything about how hard the maze is.** Difficulty, cell size, cell shape and
+   the extra options are separate axes in the engine, and deliberately so, but a child should not
+   have to reason about four things to get a maze. The Advanced area exposes them apart.
 4. **Stepped chips, not sliders**, at a 60 px minimum — above the 44 pt HIG floor.
 5. **Nothing is destructive.** A filmstrip keeps the last six mazes, and tapping one restores it
    whole. It never reorders: a maze a child is looking for should stay where they last saw it.
@@ -513,19 +595,24 @@ Principles, each with a concrete mechanism:
    spreads the cards across the width.
 8. **The preview ignores pointers**, so a hand resting on it does nothing.
 9. **Standalone display**, so there is no address bar to tap out of.
-10. **An Advanced area** — paper, orientation, difficulty and cell size, background, markers,
-    answer, ruler, metrics — behind a plainly labelled disclosure. Not a lock; an adult should
-    never have to hunt for it.
+10. **An Advanced area** — paper, orientation, difficulty, cell size, the three harder options,
+    texture, background, markers, answer, ruler, metrics — behind a plainly labelled disclosure.
+    Not a lock; an adult should never have to hunt for it.
 
 ### Saying which controls overlap
 
-The five preset cards set two things at once, difficulty and cell size, and both of those are also
-controls of their own. Left unlabelled that reads as three competing scales — "Fiendish" appearing
-in two places, meaning two different things in each.
+The preset cards set several things at once — difficulty, cell size, cell shape, and which of the
+harder options are on — and every one of those is also a control of its own. Left unlabelled that
+reads as competing scales, with "Fiendish" appearing in two places and meaning something different
+in each.
 
 The cards are headed **Preset**, with a line saying what they are a shortcut for; inside Advanced
-the two controls sit together under **What a preset sets**, apart from the page setup above them
-and the print options below. Filled moved out of Show, where it never belonged, into **Background:
+those controls sit together under **How the maze is built**, apart from the page setup above them
+and the print options below. A card stays lit only while every setting it named still agrees:
+one left lit beside a setting that had been changed by hand would be describing a different sheet
+from the one about to print. The dots on a card count its position in the list rather than its
+difficulty level, because the top three cards are all level 5 and dots that counted the level would
+show them as identical. Filled moved out of Show, where it never belonged, into **Background:
 Plain or Filled**. Nothing changed about what any control does. What changed is that the overlap is
 stated rather than left to be inferred, which is the cheapest fix available and was worth more here
 than any rearrangement.
@@ -752,38 +839,35 @@ One sequencing note: settle the weave data model before building the isometric e
 though weave is built second. A bridge needs a height, and the extrusion is where a height first
 has to exist. Deciding it late means rewriting the extrusion.
 
-### 1. Harder presets
+### 1. Harder presets — built
 
-Level 5 is the top of the model in §4 — a plain backtracker, no braiding, no dead-end cap. A sixth
-row of the same shape has nothing left to vary, and on rings levels 4 and 5 already measure the
-same. Harder means new axes, not another rung:
+Level 5 is the top of the model in §4 — a plain backtracker, no braiding, no dead-end cap — so
+harder had to come from new axes. Four were built; the measurements are in §4, and two of them
+did not land where this section originally guessed.
 
-**Cell shape in the preset.** A preset pairs a difficulty level with a pen size; the cell shape is
-a separate control and no preset touches it. Level 5 on hexagons at `FINE` is harder than Fiendish
-with no engine change at all — six neighbours, no four-way junctions, no long straight corridors to
-sight down. This is the cheapest genuine step available.
+**Cell shape in the preset.** A preset now sets the cell shape as well as difficulty and cell
+size. Two new cards: **Brutal** (squares, longest route, decoys) and **Bonkers** (hexagons, the
+same). Worth 18% and a further 9% of expected work over Fiendish.
 
-**Braiding near 1.0.** §4 established that braiding is U-shaped: opening a few dead ends makes a
-maze easier, opening most of them makes it harder again. Every level here sits on the near side of
-that curve, from 0.3 down to 0. A level on the far side — 0.85 or above — is a different puzzle
-rather than a harder one. Dead ends are how a maze tells a solver they are wrong; remove nearly all
-of them and the whole off-route area becomes one connected loop system that gives no feedback, and
-the first strategy a child learns (find the dead ends, cross them off) stops paying. Expect the
-measured score to *under*-rate this, because loops have no off-route depth to count. It needs a
-printed test and a human, not a number.
+**Running the maze between the ends of its longest corridor.** Not in the original list, and the
+best of the four: 46% on the route and 18% on the work, and the only axis measured that takes the
+score above what the recipes reach on their own. It gives up the property that the entrance is
+fixed by the outline, which is why it is an option rather than the default.
 
-**Decoy exits.** Three or four extra openings on the rim that dead-end a cell or two in. A
-post-carve step, and a toggle rather than a preset.
+**Decoy exits**, as a toggle. Cut in the drawing rather than carved, so the score is unchanged;
+what changes is that the border stops giving the exit away at a glance.
 
-**Wilson's carver as a texture choice.** It is built and tested but deliberately absent from the
-ladder: it scores within a few percent of Kruskal, so it cannot separate two levels. What it is
-instead is the only unbiased carver of the four — every possible maze on the grid is equally
-likely, where the others each have a grain from the way they walk. That belongs next to the style
-picker as a flavour, not on the difficulty scale.
+**Wilson's carver**, exposed as *Texture: Even* rather than as a difficulty step, as planned.
 
-**Explicitly rejected: a pen size below `FINE`'s 4 mm.** It is the obvious lever and it is the
-wrong one. It raises the absolute amount of work without raising the measured score, and 3 mm
-corridors are cramped for a child holding a pencil.
+**Braiding near 1.0 did not turn out to be harder, and is not on a card.** This section claimed it
+would be. Measured, it halves the composite score — opening every dead end opens every shortcut,
+and the shortest route through a 2961-cell grid falls from 809 cells to 153. What it genuinely
+does is take away dead-end filling, the shortcut a solver learns first: on a perfect maze that
+rubs the page down to exactly the solution, and at braid 1 it removes nothing at all. So it ships
+as *Loops*, an option under Advanced described for what it does, and the preset cards — whose dots
+claim an order — do not use it.
+
+**A pen size below 4 mm stays rejected**, as above.
 
 ### 2. Isometric style
 

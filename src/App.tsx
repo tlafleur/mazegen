@@ -10,7 +10,7 @@ import { wordShape } from './render/word'
 import { STYLES } from './render/style'
 import { RECIPES, type Level } from './core/difficulty'
 import { hashSeed } from './core/rng'
-import { PRESETS, presetFor } from './presets'
+import { PRESETS, presetFor, type Preset } from './presets'
 import {
   CELL_KINDS,
   MARKER,
@@ -38,6 +38,10 @@ interface Snapshot {
   readonly styleId: string
   readonly cellsId: string
   readonly wide: boolean
+  readonly farEnds: boolean
+  readonly loops: boolean
+  readonly decoys: boolean
+  readonly texture: string
   readonly seed: string
   readonly svg: string
 }
@@ -47,12 +51,19 @@ function Svg({ markup, className }: { markup: string; className: string }) {
   return <div className={className} dangerouslySetInnerHTML={{ __html: markup }} />
 }
 
-/** Difficulty as filled dots. A picture, so a pre-reader can compare two cards. */
-function Dots({ level }: { level: Level }) {
+/**
+ * Difficulty as filled dots. A picture, so a pre-reader can compare two cards.
+ *
+ * Counts where the preset sits in the list rather than its difficulty level.
+ * The two hardest presets are both level 5 — the top of the model in §4 — and
+ * differ in cell shape and route length instead, so dots that counted the level
+ * would show the last three cards as identical.
+ */
+function Dots({ rank, of }: { rank: number; of: number }) {
   return (
-    <span className="dots" aria-label={`difficulty ${level} of 5`}>
-      {[1, 2, 3, 4, 5].map((n) => (
-        <i key={n} className={n <= level ? 'dot on' : 'dot'} />
+    <span className="dots" aria-label={`difficulty ${rank} of ${of}`}>
+      {Array.from({ length: of }, (_, i) => (
+        <i key={i} className={i < rank ? 'dot on' : 'dot'} />
       ))}
     </span>
   )
@@ -115,6 +126,10 @@ export default function App() {
   const [calibration, setCalibration] = useState(false)
   const [markers, setMarkers] = useState('mouse')
   const [inkOutside, setInkOutside] = useState(false)
+  const [farEnds, setFarEnds] = useState(false)
+  const [loops, setLoops] = useState(false)
+  const [decoys, setDecoys] = useState(false)
+  const [texture, setTexture] = useState('auto')
   const [history, setHistory] = useState<Snapshot[]>([])
   const [playing, setPlaying] = useState(false)
 
@@ -140,15 +155,30 @@ export default function App() {
   // could not draw.
   const shape = fromWord ?? picked
   const style = STYLES.find((s) => s.id === styleId) ?? (STYLES[0] as (typeof STYLES)[number])
-  const activePreset = presetFor(level, penId)
+  const activePreset = presetFor({ level, penId, cellsId, farEnds, loops, decoys })
+
+  // Wilson's is the one carver that is not on the difficulty ladder: it scores
+  // within a few percent of Kruskal, so it cannot separate two levels, but it
+  // is the only one of the four with no directional grain. See §4.
+  const carver = texture === 'even' ? ('wilson' as const) : undefined
 
   const maze = useMemo(
-    () => generateMaze({ paper, pen, level, shape, seed, cells }),
-    [paper, pen, level, shape, seed, cells],
+    () => generateMaze({ paper, pen, level, shape, seed, cells, farEnds, loops, decoys, carver }),
+    [paper, pen, level, shape, seed, cells, farEnds, loops, decoys, carver],
   )
 
+  const applyPreset = (p: Preset): void => {
+    setLevel(p.level)
+    setPenId(p.pen.id)
+    setCellsId(p.cells.id)
+    setFarEnds(p.farEnds)
+    setLoops(p.loops)
+    setDecoys(p.decoys)
+  }
+
   const styleSeed = hashSeed(seed)
-  const base = { paper, stroke: pen.stroke, style, styleSeed, markers, inkOutside }
+  const base = { paper, stroke: pen.stroke, style, styleSeed, markers, inkOutside,
+    decoys: maze.decoys }
   const caption =
     `100 mm · ${paper.label} · ${pen.label} · ${cells.label} · ${shape.label} · ` +
     `${style.label} · seed ${seed}`
@@ -271,7 +301,9 @@ export default function App() {
     [maze, paper, pen, style, styleSeed, markers, inkOutside],
   )
 
-  const key = `${sheetSize.id}|${wide}|${penId}|${level}|${shape.id}|${styleId}|${cellsId}|${seed}`
+  const key =
+    `${sheetSize.id}|${wide}|${penId}|${level}|${shape.id}|${styleId}|${cellsId}|` +
+    `${farEnds}|${loops}|${decoys}|${texture}|${seed}`
   useEffect(() => {
     setHistory((prev) => {
       // Never reorder: a maze a child is looking for should stay where they
@@ -286,12 +318,17 @@ export default function App() {
         styleId,
         cellsId,
         wide,
+        farEnds,
+        loops,
+        decoys,
+        texture,
         seed,
         svg: plate,
       }
       return [entry, ...prev].slice(0, HISTORY_LIMIT)
     })
-  }, [key, plate, sheetSize.id, wide, penId, level, shapeId, styleId, cellsId, seed])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [key, plate])
 
   const restore = (s: Snapshot): void => {
     setSheetSize(PAPERS.find((p) => p.id === s.paperId) ?? sheetSize)
@@ -301,6 +338,10 @@ export default function App() {
     setShapeId(s.shapeId)
     setStyleId(s.styleId)
     setCellsId(s.cellsId)
+    setFarEnds(s.farEnds)
+    setLoops(s.loops)
+    setDecoys(s.decoys)
+    setTexture(s.texture)
     setSeed(s.seed)
   }
 
@@ -332,14 +373,26 @@ export default function App() {
     }
     return new Map(
       PRESETS.map((p) => {
-        const g = generateMaze({ paper, pen: p.pen, level: p.level, shape, seed: 'card', cells })
+        // Each card is generated at its own preset's settings, cell shape
+        // included: a card that showed squares for a preset that prints
+        // hexagons would be advertising the wrong maze.
+        const g = generateMaze({
+          paper,
+          pen: p.pen,
+          level: p.level,
+          shape,
+          seed: 'card',
+          cells: p.cells,
+          farEnds: p.farEnds,
+          loops: p.loops,
+        })
         return [
           p.id,
           renderSvg(g.grid, g.maze, g.solution, { paper, stroke: p.pen.stroke, style, crop }),
         ]
       }),
     )
-  }, [paper, shape, style, cells])
+  }, [paper, shape, style])
 
   const printCss =
     `@page { size: ${paper.width}mm ${paper.height}mm; margin: 0; }\n` +
@@ -407,27 +460,25 @@ export default function App() {
         <div className="panel-body">
         <div className="group-label">Preset</div>
         <div className="cards">
-          {PRESETS.map((p) => (
+          {PRESETS.map((p, i) => (
             <button
               key={p.id}
               type="button"
               className={activePreset?.id === p.id ? 'card on' : 'card'}
               aria-pressed={activePreset?.id === p.id}
-              onClick={() => {
-                setLevel(p.level)
-                setPenId(p.pen.id)
-              }}
+              onClick={() => applyPreset(p)}
             >
               <Svg markup={presetCards.get(p.id) ?? ''} className="card-art" />
               <span className="card-name">{p.label}</span>
-              <Dots level={p.level} />
+              <Dots rank={i + 1} of={PRESETS.length} />
             </button>
           ))}
         </div>
 
         <p className="note preset-note">
-          A preset is a shortcut for two things: how tricky the maze is, and how big its squares
-          are. Set either one by hand under Advanced and the preset simply switches off.
+          A preset is a shortcut for everything under Advanced that decides how hard the maze is:
+          how tricky it is, how big its cells are, what shape they are, and which of the extra
+          options are on. Change any of them by hand and the preset simply switches off.
         </p>
 
         <Group label="Shape" columns={3}>
@@ -504,7 +555,7 @@ export default function App() {
             </Chip>
           </Group>
 
-          <div className="group-label sub">What a preset sets</div>
+          <div className="group-label sub">How the maze is built</div>
 
           <Group label="Difficulty" columns={3}>
             {RECIPES.map((r) => (
@@ -521,6 +572,43 @@ export default function App() {
               </Chip>
             ))}
           </Group>
+
+          <Group label="Make it harder" columns={3}>
+            <Chip on={farEnds} onClick={() => setFarEnds((v) => !v)}>
+              Long way round
+            </Chip>
+            <Chip on={loops} onClick={() => setLoops((v) => !v)}>
+              Loops
+            </Chip>
+            <Chip on={decoys} onClick={() => setDecoys((v) => !v)}>
+              Decoys
+            </Chip>
+          </Group>
+
+          <p className="note">
+            <b>Long way round</b> moves the entrance and exit to the two ends of the longest
+            corridor in the maze, which makes the route about a third longer.{' '}
+            <b>Loops</b> opens nearly every dead end. Harder to be sure you are getting anywhere,
+            because nothing stops you and no part of the maze can be ruled out — but the shortest
+            way out gets shorter too, so it is a different puzzle rather than a harder one.{' '}
+            <b>Decoys</b> cuts extra gaps in the border. The way out is still the one the finish
+            marker is drawn at.
+          </p>
+
+          <Group label="Texture" columns={2}>
+            <Chip on={texture === 'auto'} onClick={() => setTexture('auto')}>
+              Normal
+            </Chip>
+            <Chip on={texture === 'even'} onClick={() => setTexture('even')}>
+              Even
+            </Chip>
+          </Group>
+
+          <p className="note">
+            <b>Even</b> carves with an algorithm that has no favourite direction, so every maze the
+            grid could hold is equally likely. Neither harder nor easier — it just looks different,
+            with fewer long snaking corridors.
+          </p>
 
           <div className="group-label sub">On the printed sheet</div>
 

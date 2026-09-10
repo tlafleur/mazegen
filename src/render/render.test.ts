@@ -12,6 +12,7 @@ import {
   gridSizeFor,
 } from './page'
 import { chainSegments } from './chain'
+import { makeRng } from '../core/rng'
 import { renderSvg } from './svg'
 import { generateMaze, shapesFor } from '../generate'
 import type { Level } from '../core/difficulty'
@@ -305,6 +306,43 @@ describe('renderSvg', () => {
     const opts = { paper: LETTER, stroke: CRAYON.stroke, showSolution: true }
     expect(renderSvg(a.grid, a.maze, a.solution, opts)).toBe(
       renderSvg(b.grid, b.maze, b.solution, opts),
+    )
+  })
+})
+
+describe('decoy openings on a sheet', () => {
+  const { grid, maze, solution } = gen(LETTER, PENCIL, 'decoy-sheet')
+  const decoys = grid.decoyExits(maze, makeRng('sheet'), 4)
+
+  it('leaves one more gap in the outline for each of them', () => {
+    // What a decoy is, at the level the renderer sees: a face of the outline
+    // that does not get a wall drawn across it.
+    const closed = grid.boundarySegments([maze.start, maze.end]).length
+    const open = grid.boundarySegments([maze.start, maze.end, ...decoys]).length
+    expect(closed - open).toBe(decoys.length)
+  })
+
+  it('reaches the drawing, and draws less of the border than without them', () => {
+    const base = { paper: LETTER, stroke: PENCIL.stroke, markers: 'none' }
+    const without = renderSvg(grid, maze, solution, base)
+    const with_ = renderSvg(grid, maze, solution, { ...base, decoys })
+    expect(with_).not.toBe(without)
+    expect(with_.length).toBeLessThan(without.length)
+  })
+
+  it('draws no marker beside one, since the marker is what says which gap counts', () => {
+    // Markers are placed at the entrance and the exit by name, so a decoy can
+    // never acquire one. Pinned because a change that found them by looking for
+    // gaps in the outline instead would put a mouse at every decoy, and the
+    // page would then have six answers and no way to tell them apart.
+    const paths = (opts: object): number =>
+      renderSvg(grid, maze, solution, { paper: LETTER, stroke: PENCIL.stroke, ...opts }).split(
+        '<path',
+      ).length
+    const costOfMarkers = paths({ markers: 'mouse' }) - paths({ markers: 'none' })
+    expect(costOfMarkers).toBeGreaterThan(0)
+    expect(paths({ markers: 'mouse', decoys }) - paths({ markers: 'none', decoys })).toBe(
+      costOfMarkers,
     )
   })
 })

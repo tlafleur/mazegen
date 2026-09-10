@@ -402,6 +402,7 @@ body {
 }
 
 .advanced .group + .group,
+.advanced .note + .group,
 .advanced .meta,
 .advanced .note {
   margin-top: 12px;
@@ -520,7 +521,7 @@ body {
 }
 
 /* A quiet heading inside the advanced list, so the controls a preset stands in
-   for are visibly the same two axes rather than a third, competing one. */
+   for read as the same axes it sets rather than a competing set of their own. */
 .group-label.sub {
   margin-top: 18px;
   padding-top: 12px;

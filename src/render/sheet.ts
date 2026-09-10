@@ -40,6 +40,14 @@ export interface SheetOptions {
    * Costs a great deal of toner, so it is off unless asked for.
    */
   readonly inkOutside?: boolean
+  /**
+   * Extra gaps in the outline that are not the way out.
+   *
+   * Chosen from the maze by `MaskedGrid.decoyExits`; drawn here as openings
+   * like the real two, but with no marker beside them, since the marker is
+   * what says which gap counts.
+   */
+  readonly decoys?: readonly CellId[]
   /** Draw a 100 mm reference line and a caption in the bottom margin. */
   readonly calibration?: boolean
   readonly caption?: string
@@ -91,6 +99,7 @@ export function buildSheet(
   // away the corridor-width guarantee.
   const jitter = Math.min(style.jitter, MAX_JITTER) * grid.pitch
   const styleSeed = opts.styleSeed ?? 0
+  const decoys = opts.decoys ?? []
 
   /** A lattice vertex, displaced and moved onto the page. */
   const at = (v: number): Point => {
@@ -143,10 +152,11 @@ export function buildSheet(
   }
 
   if (style.cave === true) {
-    strokes.push(...caveStrokes(grid, maze, radius, opts.stroke, ox, oy))
+    strokes.push(...caveStrokes(grid, maze, radius, opts.stroke, ox, oy, decoys))
   } else {
-    // The outline, minus the two openings the maze is entered and left through.
-    const segments: Segment[] = grid.boundarySegments([maze.start, maze.end])
+    // The outline, minus the openings: the two the maze is entered and left
+    // through, and any decoy gaps that lead nowhere.
+    const segments: Segment[] = grid.boundarySegments([maze.start, maze.end, ...decoys])
     for (let e = 0; e < maze.topo.edgeCount; e++) {
       if (maze.open[e] === 0) segments.push(grid.wallSegment(e))
     }
@@ -324,6 +334,7 @@ function caveStrokes(
   stroke: number,
   ox: number,
   oy: number,
+  decoys: readonly CellId[],
 ): SheetStroke[] {
   const at = (cell: CellId): Point => {
     const p = grid.cellCenter(cell)
@@ -339,9 +350,9 @@ function caveStrokes(
     polylineCommands(run.map(at), radius),
   )
 
-  // Stubs out through the two gaps in the outline, so the tunnels have a mouth
+  // Stubs out through the gaps in the outline, so the tunnels have a mouth
   // rather than stopping a cell short of one.
-  for (const cell of [maze.start, maze.end]) {
+  for (const cell of [maze.start, maze.end, ...decoys]) {
     const p = grid.openingPoint(cell)
     paths.push(polylineCommands([at(cell), { x: p.x + ox, y: p.y + oy }], 0))
   }

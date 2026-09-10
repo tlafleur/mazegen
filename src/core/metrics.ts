@@ -236,3 +236,51 @@ export function measure(maze: Maze, solution: readonly CellId[]): MazeMetrics {
     score: scoreOf(solution.length, decisionPoints, meanBranchDepth, n),
   }
 }
+
+/**
+ * Cells left after repeatedly rubbing out every dead end.
+ *
+ * The shortcut a solver learns first: a corridor that ends in a wall cannot be
+ * on the route, so cross it off — and crossing it off may expose another. On a
+ * perfect maze this terminates with exactly the solution, which is the thing
+ * worth knowing about it. Braiding takes the shortcut away: at ratio 1 there
+ * are no dead ends to start from, so filling removes nothing and every cell
+ * stays live from the first mark to the last.
+ *
+ * Deliberately not part of `measure`. `score` is expected work, and this is not
+ * work — it is how much of the page can be dismissed without doing any. The two
+ * disagree about braiding on purpose, and folding one into the other would hide
+ * that rather than report it. See docs/DESIGN.md §4.
+ */
+export function fillDeadEnds(maze: Maze): number {
+  const { topo } = maze
+  const degree = new Int32Array(topo.cellCount)
+  const filled = new Uint8Array(topo.cellCount)
+  for (let c = 0; c < topo.cellCount; c++) {
+    for (const e of topo.edgesOf(c)) if (maze.open[e] === 1) degree[c] = (degree[c] as number) + 1
+  }
+
+  // The entrance and the exit are never crossed off, however few ways out they
+  // have: the route runs through them by definition.
+  const fillable = (c: CellId): boolean =>
+    filled[c] === 0 && c !== maze.start && c !== maze.end && (degree[c] as number) <= 1
+
+  const stack: CellId[] = []
+  for (let c = 0; c < topo.cellCount; c++) if (fillable(c)) stack.push(c)
+
+  while (stack.length > 0) {
+    const cell = stack.pop() as CellId
+    if (!fillable(cell)) continue
+    filled[cell] = 1
+    for (const e of topo.edgesOf(cell)) {
+      if (maze.open[e] === 0) continue
+      const nb = topo.other(e, cell)
+      degree[nb] = (degree[nb] as number) - 1
+      if (fillable(nb)) stack.push(nb)
+    }
+  }
+
+  let left = 0
+  for (let c = 0; c < topo.cellCount; c++) if (filled[c] === 0) left++
+  return left
+}

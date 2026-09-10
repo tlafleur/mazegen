@@ -4,6 +4,7 @@ import { MaskedGrid } from './masked'
 import { circleMask, heartMask, polygonMask, rectangleMask, starMask, shapeLibrary } from './mask'
 import { carveAtLevel, LEVELS } from '../difficulty'
 import { reachableCount, solve } from '../analyze'
+import { openDegree } from '../metrics'
 import { makeRng } from '../rng'
 import { A4, LETTER, PENS, gridSizeFor } from '../../render/page'
 
@@ -221,5 +222,123 @@ describe('every shape, on every sheet', () => {
       // anything that has thinned into filament.
       expect(grid.cellCount).toBeGreaterThan(base.cellCount * 0.22)
     }
+  })
+})
+
+describe('farthestOpenPair', () => {
+  const grid = new MaskedGrid(gridFor(LETTER, 6), rectangleMask)
+  const seeds = ['a', 'b', 'c', 'd', 'e', 'f']
+
+  const routeLength = (m: ReturnType<typeof carveAtLevel>): number =>
+    (solve(m) as number[]).length
+
+  it('finds a longer route than the shape-chosen pair, at every seed', () => {
+    // The reason it exists. `farthestBoundaryPair` picks opposite corners of the
+    // outline and takes whatever route the carving happens to leave between
+    // them; this picks the ends of the longest route there actually is.
+    for (const seed of seeds) {
+      const [s, e] = grid.farthestBoundaryPair()
+      const maze = carveAtLevel(grid, makeRng(seed), 5, s, e)
+      const [p, q] = grid.farthestOpenPair(maze)
+      expect(routeLength({ ...maze, start: p, end: q })).toBeGreaterThan(routeLength(maze))
+    }
+  })
+
+  it('picks two cells on the outline, each with somewhere to draw a marker', () => {
+    const maze = carveAtLevel(grid, makeRng('ends'), 5, ...grid.farthestBoundaryPair())
+    const [p, q] = grid.farthestOpenPair(maze)
+    expect(p).not.toBe(q)
+    for (const c of [p, q]) {
+      expect(grid.boundaryCells()).toContain(c)
+      expect(grid.openingNormal(c)).not.toBeNull()
+    }
+  })
+
+  it('puts the entrance at the top, like the shape-chosen pair does', () => {
+    // Otherwise the mouse ends up at the finish and the route runs up the page.
+    for (const seed of seeds) {
+      const maze = carveAtLevel(grid, makeRng(seed), 5, ...grid.farthestBoundaryPair())
+      const [p, q] = grid.farthestOpenPair(maze)
+      const a = grid.cellCenter(p)
+      const b = grid.cellCenter(q)
+      expect(a.y !== b.y ? a.y < b.y : a.x <= b.x).toBe(true)
+    }
+  })
+
+  it('is deterministic', () => {
+    const maze = carveAtLevel(grid, makeRng('det'), 5, ...grid.farthestBoundaryPair())
+    expect(grid.farthestOpenPair(maze)).toEqual(grid.farthestOpenPair(maze))
+  })
+
+  it('works on a shape whose outline is not a rectangle', () => {
+    const heart = new MaskedGrid(gridFor(LETTER, 6), heartMask)
+    const maze = carveAtLevel(heart, makeRng('heart'), 5, ...heart.farthestBoundaryPair())
+    const [p, q] = heart.farthestOpenPair(maze)
+    expect(heart.openingNormal(p)).not.toBeNull()
+    expect(heart.openingNormal(q)).not.toBeNull()
+    expect(solve({ ...maze, start: p, end: q })).not.toBeNull()
+  })
+})
+
+describe('decoyExits', () => {
+  const grid = new MaskedGrid(gridFor(LETTER, 6), rectangleMask)
+  const [start, end] = grid.farthestBoundaryPair()
+  const maze = carveAtLevel(grid, makeRng('decoy'), 5, start, end)
+  const decoys = grid.decoyExits(maze, makeRng('d'), 4)
+
+  const apart = (a: number, b: number): number => {
+    const p = grid.cellCenter(a)
+    const q = grid.cellCenter(b)
+    return Math.hypot(p.x - q.x, p.y - q.y)
+  }
+
+  it('finds as many as asked for', () => {
+    expect(decoys).toHaveLength(4)
+    expect(new Set(decoys).size).toBe(4)
+  })
+
+  it('puts every one on the outline, and never on the real two', () => {
+    for (const c of decoys) {
+      expect(grid.boundaryCells()).toContain(c)
+      expect(grid.openingNormal(c)).not.toBeNull()
+      expect(c).not.toBe(start)
+      expect(c).not.toBe(end)
+    }
+  })
+
+  it('holds them apart from the real openings and from each other', () => {
+    // Near the entrance a decoy would collide with the mouse drawn outside it;
+    // near another decoy the two gaps read as one wide one.
+    const all = [start, end, ...decoys]
+    for (const c of decoys) {
+      for (const other of all) {
+        if (other === c) continue
+        expect(apart(c, other)).toBeGreaterThanOrEqual(14)
+      }
+    }
+  })
+
+  it('prefers dead ends, so following one really is a wasted trip', () => {
+    for (const c of decoys) expect(openDegree(maze, c)).toBe(1)
+  })
+
+  it('still finds some on a maze that has no dead ends at all', () => {
+    const loopy = carveAtLevel(grid, makeRng('loopy'), 5, start, end, { loops: true })
+    let ends = 0
+    for (let c = 0; c < grid.cellCount; c++) if (openDegree(loopy, c) === 1) ends++
+    expect(ends).toBe(0)
+    expect(grid.decoyExits(loopy, makeRng('d'), 4)).toHaveLength(4)
+  })
+
+  it('is deterministic, and asks for none when told none', () => {
+    expect(grid.decoyExits(maze, makeRng('d'), 4)).toEqual(decoys)
+    expect(grid.decoyExits(maze, makeRng('d'), 0)).toEqual([])
+  })
+
+  it('does not change the maze', () => {
+    // They are cut in the drawing, not carved: nothing about the graph moves.
+    const before = Array.from(maze.open)
+    grid.decoyExits(maze, makeRng('again'), 4)
+    expect(Array.from(maze.open)).toEqual(before)
   })
 })
