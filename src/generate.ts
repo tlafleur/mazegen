@@ -18,6 +18,7 @@ import {
   type Pen,
 } from './render/page'
 import type { BaseGrid } from './core/grid/planar'
+import { isoLiveArea } from './render/iso'
 
 export interface MazeSettings {
   readonly paper: Paper
@@ -42,6 +43,16 @@ export interface MazeSettings {
   readonly decoys?: boolean
   /** Override the level's carver. Undefined leaves the recipe alone. */
   readonly carver?: CarverName | undefined
+  /**
+   * Size the grid for an isometric drawing rather than a flat one.
+   *
+   * The one thing about how a maze is drawn that has to reach back this far.
+   * Every other style is a pure function of the same geometry, but a projection
+   * spends most of the sheet on the empty bands its bounding box leaves and
+   * narrows corridors to `cos30` besides, so keeping the flat cell count would
+   * quietly break the promise cell size makes. See `render/iso.ts`.
+   */
+  readonly iso?: boolean
 }
 
 /**
@@ -69,8 +80,10 @@ export interface GeneratedMaze {
  * apart, not a whole one — but the answer is in the same units, so nothing
  * downstream has to know which it got.
  */
-export function baseGridFor(paper: Paper, pen: Pen, cells?: CellKind): BaseGrid {
-  const live = { width: paper.width - 2 * DEFAULT_MARGIN, height: paper.height - 2 * DEFAULT_MARGIN }
+export function baseGridFor(paper: Paper, pen: Pen, cells?: CellKind, iso = false): BaseGrid {
+  const live = iso
+    ? isoLiveArea(paper, pen.pitch)
+    : { width: paper.width - 2 * DEFAULT_MARGIN, height: paper.height - 2 * DEFAULT_MARGIN }
   if (cells?.id === HEXAGONS.id) {
     const { cols, rows } = hexGridSize(live.width, live.height, pen.pitch)
     return new HexGrid(cols, rows, pen.pitch)
@@ -79,13 +92,16 @@ export function baseGridFor(paper: Paper, pen: Pen, cells?: CellKind): BaseGrid 
     // A disc, so the shorter side of the sheet is what it can fill.
     return new PolarGrid(polarGridSize(live.width, live.height, pen.pitch), pen.pitch)
   }
-  const { cols, rows } = gridSizeFor(paper, pen.pitch)
+  const { cols, rows } = gridSizeFor(
+    { ...paper, width: live.width + 2 * DEFAULT_MARGIN, height: live.height + 2 * DEFAULT_MARGIN },
+    pen.pitch,
+  )
   return new SquareGrid(cols, rows, pen.pitch)
 }
 
 /** The shapes available on a given sheet, sized to its proportions. */
-export function shapesFor(paper: Paper, pen: Pen, cells?: CellKind): readonly Shape[] {
-  const grid = baseGridFor(paper, pen, cells)
+export function shapesFor(paper: Paper, pen: Pen, cells?: CellKind, iso = false): readonly Shape[] {
+  const grid = baseGridFor(paper, pen, cells, iso)
   return shapeLibrary(grid.height / grid.width)
 }
 
@@ -105,7 +121,7 @@ export function shapesFor(paper: Paper, pen: Pen, cells?: CellKind): readonly Sh
 export function generateMaze(settings: MazeSettings): GeneratedMaze {
   const { paper, pen, level, shape, seed, cells } = settings
 
-  const grid = new MaskedGrid(baseGridFor(paper, pen, cells), shape.mask)
+  const grid = new MaskedGrid(baseGridFor(paper, pen, cells, settings.iso === true), shape.mask)
 
   const extras: Extras = { loops: settings.loops === true, carver: settings.carver }
   const [start, end] = grid.farthestBoundaryPair()

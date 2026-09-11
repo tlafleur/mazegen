@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { baseGridFor, generateMaze, shapesFor } from './generate'
 import { renderPdf, renderSvg } from './render/svg'
-import { sheetOrigin } from './render/sheet'
+import { sheetMapping } from './render/sheet'
 import { polylineCommands, toSvgPath } from './render/path'
 import { follow, startTrail, type Trail } from './core/trail'
 import type { Point } from './core/grid/planar'
@@ -136,13 +136,17 @@ export default function App() {
   const paper = useMemo(() => oriented(sheetSize, wide), [sheetSize, wide])
   const pen = PENS.find((p) => p.id === penId) ?? MARKER
   const cells = CELL_KINDS.find((c) => c.id === cellsId) ?? SQUARES
-  const shapes = useMemo(() => shapesFor(paper, pen, cells), [paper, pen, cells])
+  const style = STYLES.find((s) => s.id === styleId) ?? (STYLES[0] as (typeof STYLES)[number])
+  // The one thing about drawing that reaches back into how the maze is built:
+  // a projection fits far fewer cells on a sheet. See render/iso.ts.
+  const flat = style.iso !== true
+  const shapes = useMemo(() => shapesFor(paper, pen, cells, !flat), [paper, pen, cells, flat])
   const picked = shapes.find((s) => s.id === shapeId) ?? (shapes[0] as (typeof shapes)[number])
 
   // A word, when there is one, is a shape like any other — nothing downstream
   // learns that this one came from typing. Sized against the bare grid rather
   // than a carved maze, since all it needs is how many cells fit across.
-  const box = useMemo(() => baseGridFor(paper, pen, cells), [paper, pen, cells])
+  const box = useMemo(() => baseGridFor(paper, pen, cells, !flat), [paper, pen, cells, flat])
   const fromWord = useMemo(() => {
     if (word.trim() === '') return null
     return wordShape(word, {
@@ -154,7 +158,6 @@ export default function App() {
   // Falls back to the picked shape for an empty box, and for a word the browser
   // could not draw.
   const shape = fromWord ?? picked
-  const style = STYLES.find((s) => s.id === styleId) ?? (STYLES[0] as (typeof STYLES)[number])
   const activePreset = presetFor({ level, penId, cellsId, farEnds, loops, decoys })
 
   // Wilson's is the one carver that is not on the difficulty ladder: it scores
@@ -163,8 +166,11 @@ export default function App() {
   const carver = texture === 'even' ? ('wilson' as const) : undefined
 
   const maze = useMemo(
-    () => generateMaze({ paper, pen, level, shape, seed, cells, farEnds, loops, decoys, carver }),
-    [paper, pen, level, shape, seed, cells, farEnds, loops, decoys, carver],
+    () =>
+      generateMaze({
+        paper, pen, level, shape, seed, cells, farEnds, loops, decoys, carver, iso: !flat,
+      }),
+    [paper, pen, level, shape, seed, cells, farEnds, loops, decoys, carver, flat],
   )
 
   const applyPreset = (p: Preset): void => {
@@ -236,21 +242,24 @@ export default function App() {
     last.current = null
   }, [maze])
 
-  const origin = sheetOrigin(paper, maze.grid)
+  // The same mapping the sheet was drawn with, so a finger lands where the
+  // corridor it is pointing at was printed — under a projection as much as
+  // under a translation.
+  const map = useMemo(() => sheetMapping(paper, maze.grid, style), [paper, maze.grid, style])
 
-  /** A pointer, in millimetres from the maze's top-left corner. */
+  /** A pointer, as a point in the grid. */
   const gridPoint = useCallback(
     (e: { clientX: number; clientY: number }): Point | null => {
       const el = overlay.current
       if (el === null) return null
       const r = el.getBoundingClientRect()
       if (r.width === 0 || r.height === 0) return null
-      return {
-        x: ((e.clientX - r.left) / r.width) * paper.width - origin.x,
-        y: ((e.clientY - r.top) / r.height) * paper.height - origin.y,
-      }
+      return map.toGrid({
+        x: ((e.clientX - r.left) / r.width) * paper.width,
+        y: ((e.clientY - r.top) / r.height) * paper.height,
+      })
     },
-    [paper, origin.x, origin.y],
+    [paper, map],
   )
 
   const onTrailDown = (e: React.PointerEvent<SVGSVGElement>): void => {
@@ -277,21 +286,14 @@ export default function App() {
   // Where the trail is drawn, in page millimetres: cell centres, starting at
   // the gap in the wall so the line comes in from outside like the mouse does.
   const trailPath = useMemo(() => {
-    const at = (c: number): Point => {
-      const p = maze.grid.cellCenter(c)
-      return { x: p.x + origin.x, y: p.y + origin.y }
-    }
-    const opening = maze.grid.openingPoint(maze.maze.start)
+    const at = (c: number): Point => map.toPage(maze.grid.cellCenter(c))
     const points: Point[] = [
-      { x: opening.x + origin.x, y: opening.y + origin.y },
+      map.toPage(maze.grid.openingPoint(maze.maze.start)),
       ...trail.cells.map(at),
     ]
-    if (trail.done) {
-      const out = maze.grid.openingPoint(maze.maze.end)
-      points.push({ x: out.x + origin.x, y: out.y + origin.y })
-    }
+    if (trail.done) points.push(map.toPage(maze.grid.openingPoint(maze.maze.end)))
     return toSvgPath(polylineCommands(points, style.rounding * maze.grid.pitch))
-  }, [trail, maze, origin.x, origin.y, style])
+  }, [trail, maze, map, style])
 
   // A second render without the answer or the ruler, so the filmstrip shows the
   // maze rather than whatever happened to be toggled when it was made.
@@ -428,8 +430,8 @@ export default function App() {
               <path d={trailPath} strokeWidth={pen.pitch * 0.34} />
               {trail.cells.length === 1 && !trail.done && (
                 <circle
-                  cx={maze.grid.cellCenter(maze.maze.start).x + origin.x}
-                  cy={maze.grid.cellCenter(maze.maze.start).y + origin.y}
+                  cx={map.toPage(maze.grid.cellCenter(maze.maze.start)).x}
+                  cy={map.toPage(maze.grid.cellCenter(maze.maze.start)).y}
                   r={pen.pitch * 0.42}
                   strokeWidth={pen.pitch * 0.16}
                 />
@@ -509,6 +511,13 @@ export default function App() {
           />
         </label>
 
+        {!flat && word.trim() !== '' && (
+          <p className="note">
+            Isometric shears the letters and fits far fewer cells across, so a word comes out hard
+            to read. Any of the other line styles keeps it legible.
+          </p>
+        )}
+
         <Group label="Cells" columns={2}>
           {CELL_KINDS.map((c) => (
             <Chip
@@ -554,6 +563,14 @@ export default function App() {
               Wide
             </Chip>
           </Group>
+
+          {!flat && (
+            <p className="note">
+              An isometric maze is a square turned on its corner, so it is always about twice as
+              wide as it is tall and a tall page leaves a band of paper empty above and below.
+              Wide suits it, and fits about half as much maze again.
+            </p>
+          )}
 
           <div className="group-label sub">How the maze is built</div>
 

@@ -362,6 +362,55 @@ a plain Classic maze. The icons are built by the real renderer now. An icon that
 what it is picking is worse than no icon at all.
 
 
+### Isometric: the one style that changes the maze
+
+Every other style here is a pure function of the same wall geometry, which is the claim §3 makes and
+the reason a style can be picked last. Isometric breaks it, and the break is worth stating rather
+than hiding, because it is a property of projection rather than a shortcut taken here.
+
+**Walls are cards standing on the floor.** A wall has no thickness, so there is no top face: the
+whole panel is one quadrilateral — along the base, up, back along the top, down — filled white and
+then outlined. That fill is the entire occlusion model. Sorting the panels by the sum of their
+endpoints' grid coordinates and drawing back to front means a nearer wall simply paints over a
+further one, and it is exact here because every wall lies on a cell boundary and no two of them
+cross.
+
+**Wall height decides whether the maze is solvable at all.** A wall of height `h` hides `h / sin30`
+millimetres of floor behind it. At 0.3 × pitch that is 0.6 of a cell, so a corridor running away
+from the viewer is still more than half visible past the wall in front of it; at 0.5 it would be a
+whole cell and such corridors would disappear. These are curbs, not hedges. Found by rendering, not
+by choosing.
+
+**The upright edge between one wall and the next in line is left out.** It is not a real edge — two
+collinear panels are coplanar — and drawing it turned every long wall into a row of bricks whose
+hatching buried the maze under its own texture. Corners and ends keep theirs, because there the two
+panels genuinely turn away from each other.
+
+**A projection fits about a quarter as much maze on a sheet, and no amount of tuning changes it.**
+Two things take the space. Corridors come out `cos30` of their width, so keeping the flat cell count
+would quietly break the promise cell size makes. And the projected bounding box of a `w` by `h` grid
+is always `(w + h)·cos30` by `(w + h)·sin30` — a fixed 1.73:1 — *whatever* the split between `w` and
+`h`, because rotating a rectangle 45° and squashing it does not care which side was which. A square
+grid is the best case: its rhombus fills half that box, where a lopsided one fills less. So a
+portrait sheet leaves a band of paper empty above and below, a landscape one wastes far less, and
+the panel says so instead of pretending otherwise.
+
+The way to fill a portrait page would be to carve a region that *projects* to a rectangle — a long
+thin parallelogram in grid space, which would need a mask chosen from the paper. That is a real
+option and deliberately not taken here: it would make the shape library depend on the style, which
+is the coupling §3 exists to prevent.
+
+**What it costs elsewhere:** `MazeSettings` carries an `iso` flag so `baseGridFor` can size the grid
+for the projection, and `sheetMapping` puts the flat translation and the projection behind one call
+so the preview, the print and a finger on the screen cannot drift apart. Solving on screen works
+unchanged — the round trip is tested by reading the drawn answer back out of the rendered sheet and
+walking a pointer along it.
+
+**Height is a parameter from the start, not an afterthought.** `IsoView.to` takes a `z`, and nothing
+in the app raises anything off the floor yet. A weave maze's bridge is exactly a wall whose base is
+not at zero, and the projection is the first place that has to be expressible — settling it now was
+the sequencing note in §13, and it cost two parameters rather than a rewrite.
+
 ### Rings: the third grid, and the two things it does not fit
 
 Concentric rings, each subdivided into cells. A ring's cells get physically wider the further out
@@ -835,9 +884,10 @@ mazes. The order below is agreed; the rest is recorded so it does not have to be
 
 Order: **harder presets → isometric style → weave mazes → the Escher group.**
 
-One sequencing note: settle the weave data model before building the isometric extrusion, even
-though weave is built second. A bridge needs a height, and the extrusion is where a height first
-has to exist. Deciding it late means rewriting the extrusion.
+The sequencing note — settle the weave data model before building the isometric extrusion, since a
+bridge needs a height and the extrusion is where a height first has to exist — is discharged.
+`IsoView.to(point, z)` takes one, and `isoStrokes` draws a panel from a base and a height rather
+than from the floor, so a bridge is a wall whose base is not zero. Two parameters, not a rewrite.
 
 ### 1. Harder presets — built
 
@@ -869,13 +919,25 @@ claim an order — do not use it.
 
 **A pen size below 4 mm stays rejected**, as above.
 
-### 2. Isometric style
+### 2. Isometric style — built
 
-Project the square lattice onto a 2:1 rhombus lattice and extrude each wall upward into a
-parallelogram, drawing back to front by row. The topology does not change: only `vertexPos` and the
-wall drawing do, which makes this renderer-only work in the sense §3 intended. It inherits every
-shape, carver and difficulty already built, and it shares its extrusion with weave bridges and with
-any later first-person mode.
+Renderer-only in the sense that mattered: no carver, no difficulty recipe, no shape mask and no
+output format changed. The details, the wall height that decides solvability, and the page geometry
+that makes a portrait sheet a poor fit are in §5.
+
+Two things the plan did not anticipate. A projection fits about a quarter as much maze on a page,
+for two separate reasons that compound — corridors come out `cos30` of their width, and the
+projected bounding box is a fixed 1.73:1 whatever the grid — so `MazeSettings` carries an `iso` flag
+to size the grid, which is the only place a style reaches back into how the maze is built. And the
+naive extrusion drew the upright edge between every pair of collinear walls, which turned long walls
+into rows of bricks; leaving those out was the difference between a drawing and a texture.
+
+Solving on screen came along for free once the flat translation and the projection went behind one
+`sheetMapping` call, and is tested by reading the drawn answer back out of the rendered sheet and
+walking a pointer along it.
+
+Still open, and deliberately: filling a portrait page would need a region chosen to *project* to a
+rectangle, which means a mask that depends on the paper and the style. See §5.
 
 ### 3. Weave mazes
 

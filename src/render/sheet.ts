@@ -5,6 +5,7 @@ import { polylineCommands, type PathCommand } from './path'
 import { DEFAULT_MARGIN, type Paper } from './page'
 import { CAVE_GAP, CLASSIC, MAX_JITTER, jitterOffset, sketchOffset, type Style } from './style'
 import { markerSet, placeMarker } from './marker'
+import { isoStrokes, isoView } from './iso'
 import type { Sheet, SheetLabel, SheetStroke } from './pdf'
 
 /** Twice the area a closed ring encloses, signed. Sign is not used, only size. */
@@ -74,6 +75,37 @@ export function sheetOrigin(
 }
 
 /**
+ * Grid millimetres onto the page, and back.
+ *
+ * Exported because solving on screen needs the same answer in reverse, and the
+ * two disagreeing by a millimetre would make the finger land in the wrong cell.
+ * Flat styles are a translation; the isometric one is a projection, and putting
+ * both behind one call is what keeps the preview, the print and the finger in
+ * agreement without every caller knowing which it got.
+ */
+export interface SheetMapping {
+  toPage(p: Point): Point
+  toGrid(p: Point): Point
+}
+
+export function sheetMapping(
+  paper: Paper,
+  grid: { width: number; height: number; pitch: number },
+  style: Style = CLASSIC,
+  margin: number = DEFAULT_MARGIN,
+): SheetMapping {
+  if (style.iso === true) {
+    const view = isoView(paper, grid, margin)
+    return { toPage: (p) => view.to(p), toGrid: (p) => view.from(p) }
+  }
+  const o = sheetOrigin(paper, grid, margin)
+  return {
+    toPage: (p) => ({ x: p.x + o.x, y: p.y + o.y }),
+    toGrid: (p) => ({ x: p.x - o.x, y: p.y - o.y }),
+  }
+}
+
+/**
  * Everything on one page, described once.
  *
  * Both outputs render this same structure. Building the geometry separately for
@@ -101,11 +133,18 @@ export function buildSheet(
   const styleSeed = opts.styleSeed ?? 0
   const decoys = opts.decoys ?? []
 
+  // Null for every flat style, which is all of them but one.
+  const iso = style.iso === true ? isoView(paper, grid, margin) : null
+
+  /** A point in grid millimetres, onto the page. */
+  const onPage = (p: Point): Point =>
+    iso === null ? { x: p.x + ox, y: p.y + oy } : iso.to(p)
+
   /** A lattice vertex, displaced and moved onto the page. */
   const at = (v: number): Point => {
     const p = grid.vertexPos(v)
     const j = jitterOffset(v, styleSeed, jitter)
-    return { x: p.x + j.x + ox, y: p.y + j.y + oy }
+    return onPage({ x: p.x + j.x, y: p.y + j.y })
   }
 
   // Wide enough to hold a marker, so the mouse has black to sit on.
@@ -151,7 +190,9 @@ export function buildSheet(
     }
   }
 
-  if (style.cave === true) {
+  if (iso !== null) {
+    strokes.push(...isoStrokes(grid, maze, iso, opts.stroke, decoys))
+  } else if (style.cave === true) {
     strokes.push(...caveStrokes(grid, maze, radius, opts.stroke, ox, oy, decoys))
   } else {
     // The outline, minus the openings: the two the maze is entered and left
@@ -204,10 +245,7 @@ export function buildSheet(
   /** Midpoint of a cell's opening, following the same displacement as the walls. */
   const openingAt = (cell: CellId): Point => {
     const seg = grid.openingSegment(cell)
-    if (seg === null) {
-      const p = grid.cellCenter(cell)
-      return { x: p.x + ox, y: p.y + oy }
-    }
+    if (seg === null) return onPage(grid.cellCenter(cell))
     const a = at(seg[0])
     const b = at(seg[1])
     return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }
@@ -218,10 +256,7 @@ export function buildSheet(
     // ends, which have to follow their gaps in the wall.
     const points: Point[] = [
       openingAt(maze.start),
-      ...solution.map((c) => {
-        const p = grid.cellCenter(c)
-        return { x: p.x + ox, y: p.y + oy }
-      }),
+      ...solution.map((c) => onPage(grid.cellCenter(c))),
       openingAt(maze.end),
     ]
     const dash = grid.pitch * 0.3
@@ -232,6 +267,22 @@ export function buildSheet(
     })
   }
 
+  /**
+   * The way a face points, once the page has been drawn on.
+   *
+   * Under a projection the outward normal of a wall is no longer the direction
+   * "outward" runs on paper, so it is measured rather than assumed: step one
+   * cell along it in grid space and see where that lands.
+   */
+  const onPageDirection = (cell: CellId, n: Point | null): Point | null => {
+    if (n === null || iso === null) return n
+    const p = grid.cellCenter(cell)
+    const a = onPage(p)
+    const b = onPage({ x: p.x + n.x * grid.pitch, y: p.y + n.y * grid.pitch })
+    const len = Math.hypot(b.x - a.x, b.y - a.y)
+    return len === 0 ? n : { x: (b.x - a.x) / len, y: (b.y - a.y) / len }
+  }
+
   // Drawn outside the outline, along the direction the opening faces, so they
   // never collide with a wall and need no test that they have not.
   const set = markerSet(opts.markers)
@@ -240,7 +291,7 @@ export function buildSheet(
     [maze.end, set.end, false],
   ] as const) {
     if (marker === null) continue
-    const outward = grid.openingNormal(cell)
+    const outward = onPageDirection(cell, grid.openingNormal(cell))
     if (outward === null) continue
     for (const part of placeMarker(
       {
