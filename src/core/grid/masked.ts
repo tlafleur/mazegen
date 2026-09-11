@@ -2,7 +2,7 @@ import type { CellId, EdgeId, Maze, RowStructured, Topology } from '../types'
 import type { Rng } from '../rng'
 import { openDegree } from '../metrics'
 import type { Mask } from './mask'
-import type { BaseGrid, PlanarGrid, Point, Segment } from './planar'
+import type { BaseGrid, Crossing, PlanarGrid, Point, Segment } from './planar'
 
 /**
  * Closest a decoy gap may come to a real opening or another decoy, in mm.
@@ -50,6 +50,8 @@ export class MaskedGrid implements Topology, PlanarGrid {
   private readonly adjEdges: Int32Array
   /** Face chosen as this cell's opening, or -1 for a cell not on the outline. */
   private readonly openFace: Int32Array
+  /** Base edge id to local, built on first use and only where there are bridges. */
+  private localEdges: Map<EdgeId, EdgeId> | null = null
 
   constructor(
     readonly base: BaseGrid,
@@ -261,6 +263,35 @@ export class MaskedGrid implements Topology, PlanarGrid {
    */
   farthestOpenPair(maze: Maze): readonly [CellId, CellId] {
     return this.farthestPair(maze.open)
+  }
+
+  /**
+   * The base grid's crossings, in this grid's own ids.
+   *
+   * A crossing survives the mask only if its cell and its bridge both did:
+   * cut either away and what is left is an ordinary corridor, which is exactly
+   * what the geometry then describes, so there is nothing to draw.
+   */
+  crossings(): readonly Crossing[] {
+    const from = this.base.crossings?.() ?? []
+    if (from.length === 0) return []
+    if (this.localEdges === null) {
+      this.localEdges = new Map()
+      for (let e = 0; e < this.edgeCount; e++) {
+        this.localEdges.set(this.edgeToBase[e] as EdgeId, e)
+      }
+    }
+    const out: Crossing[] = []
+    for (const x of from) {
+      const edge = this.localEdges.get(x.edge) ?? -1
+      const under = this.localEdges.get(x.under) ?? -1
+      // Both gone means the mask cut the whole position away, and there is
+      // nothing at that place to draw. One gone leaves a corridor, and the
+      // renderer draws the walls for the side that is no longer there.
+      if (edge < 0 && under < 0) continue
+      out.push({ ...x, edge, under })
+    }
+    return out
   }
 
   /**

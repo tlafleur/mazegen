@@ -41,6 +41,7 @@ interface Snapshot {
   readonly farEnds: boolean
   readonly loops: boolean
   readonly decoys: boolean
+  readonly weave: boolean
   readonly texture: string
   readonly seed: string
   readonly svg: string
@@ -129,6 +130,7 @@ export default function App() {
   const [farEnds, setFarEnds] = useState(false)
   const [loops, setLoops] = useState(false)
   const [decoys, setDecoys] = useState(false)
+  const [weave, setWeave] = useState(false)
   const [texture, setTexture] = useState('auto')
   const [history, setHistory] = useState<Snapshot[]>([])
   const [playing, setPlaying] = useState(false)
@@ -158,7 +160,7 @@ export default function App() {
   // Falls back to the picked shape for an empty box, and for a word the browser
   // could not draw.
   const shape = fromWord ?? picked
-  const activePreset = presetFor({ level, penId, cellsId, farEnds, loops, decoys })
+  const activePreset = presetFor({ level, penId, cellsId, farEnds, loops, decoys, weave })
 
   // Wilson's is the one carver that is not on the difficulty ladder: it scores
   // within a few percent of Kruskal, so it cannot separate two levels, but it
@@ -168,9 +170,9 @@ export default function App() {
   const maze = useMemo(
     () =>
       generateMaze({
-        paper, pen, level, shape, seed, cells, farEnds, loops, decoys, carver, iso: !flat,
+        paper, pen, level, shape, seed, cells, farEnds, loops, decoys, weave, carver, iso: !flat,
       }),
-    [paper, pen, level, shape, seed, cells, farEnds, loops, decoys, carver, flat],
+    [paper, pen, level, shape, seed, cells, farEnds, loops, decoys, weave, carver, flat],
   )
 
   const applyPreset = (p: Preset): void => {
@@ -180,6 +182,7 @@ export default function App() {
     setFarEnds(p.farEnds)
     setLoops(p.loops)
     setDecoys(p.decoys)
+    setWeave(p.weave)
   }
 
   const styleSeed = hashSeed(seed)
@@ -305,7 +308,7 @@ export default function App() {
 
   const key =
     `${sheetSize.id}|${wide}|${penId}|${level}|${shape.id}|${styleId}|${cellsId}|` +
-    `${farEnds}|${loops}|${decoys}|${texture}|${seed}`
+    `${farEnds}|${loops}|${decoys}|${weave}|${texture}|${seed}`
   useEffect(() => {
     setHistory((prev) => {
       // Never reorder: a maze a child is looking for should stay where they
@@ -323,6 +326,7 @@ export default function App() {
         farEnds,
         loops,
         decoys,
+        weave,
         texture,
         seed,
         svg: plate,
@@ -343,6 +347,7 @@ export default function App() {
     setFarEnds(s.farEnds)
     setLoops(s.loops)
     setDecoys(s.decoys)
+    setWeave(s.weave)
     setTexture(s.texture)
     setSeed(s.seed)
   }
@@ -387,6 +392,7 @@ export default function App() {
           cells: p.cells,
           farEnds: p.farEnds,
           loops: p.loops,
+          weave: p.weave,
         })
         return [
           p.id,
@@ -590,9 +596,12 @@ export default function App() {
             ))}
           </Group>
 
-          <Group label="Make it harder" columns={3}>
+          <Group label="Make it harder" columns={2}>
             <Chip on={farEnds} onClick={() => setFarEnds((v) => !v)}>
               Long way round
+            </Chip>
+            <Chip on={weave} onClick={() => setWeave((v) => !v)}>
+              Bridges
             </Chip>
             <Chip on={loops} onClick={() => setLoops((v) => !v)}>
               Loops
@@ -605,12 +614,22 @@ export default function App() {
           <p className="note">
             <b>Long way round</b> moves the entrance and exit to the two ends of the longest
             corridor in the maze, which makes the route about a third longer.{' '}
+            <b>Bridges</b> lets some corridors cross over others, so two paths meeting on the page
+            need not meet in the maze — the biggest single step in difficulty here, and the one
+            thing that breaks an assumption nobody thinks to question.{' '}
             <b>Loops</b> opens nearly every dead end. Harder to be sure you are getting anywhere,
             because nothing stops you and no part of the maze can be ruled out — but the shortest
             way out gets shorter too, so it is a different puzzle rather than a harder one.{' '}
             <b>Decoys</b> cuts extra gaps in the border. The way out is still the one the finish
             marker is drawn at.
           </p>
+
+          {weave && cells.id !== SQUARES.id && (
+            <p className="note">
+              Bridges need cells in straight lines to cross, so they only apply to squares. On{' '}
+              {cells.label.toLowerCase()} the setting is ignored.
+            </p>
+          )}
 
           <Group label="Texture" columns={2}>
             <Chip on={texture === 'auto'} onClick={() => setTexture('auto')}>

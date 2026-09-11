@@ -1,8 +1,10 @@
 import type { CellId, Maze } from '../core/types'
-import type { PlanarGrid, Point, Segment } from '../core/grid/planar'
+import type { Crossing, PlanarGrid, Point, Segment } from '../core/grid/planar'
 import { DEFAULT_MARGIN, type Paper } from './page'
 import type { PathCommand } from './path'
 import type { SheetStroke } from './pdf'
+import { BRIDGE_WIDTH } from '../core/grid/weave'
+import { carved } from './sheet'
 
 /**
  * True isometric: the three axes are equally foreshortened, so a millimetre
@@ -146,6 +148,12 @@ interface Panel {
   readonly z: number
 }
 
+/** One thing to draw, and how near the viewer it is. */
+interface Piece {
+  readonly z: number
+  readonly strokes: SheetStroke[]
+}
+
 /**
  * Walls as upright panels, drawn back to front.
  *
@@ -162,6 +170,12 @@ interface Panel {
  * every long wall into a row of bricks, which read as hatching and buried the
  * maze under its own texture. Corners and ends keep theirs, because there the
  * two panels genuinely turn away from each other.
+ *
+ * A bridge is the one thing here that is not on the floor, and it is what the
+ * `z` in `IsoView.to` was put there for: a deck resting on the tops of the
+ * walls either side of it, with its own low walls on top of that. Flat, a
+ * bridge has to be drawn as a gap in the corridor beneath and read as one;
+ * here it is simply higher up, which is the whole argument for the style.
  */
 export function isoStrokes(
   grid: PlanarGrid,
@@ -169,11 +183,14 @@ export function isoStrokes(
   view: IsoView,
   stroke: number,
   decoys: readonly CellId[],
+  crossings: readonly Crossing[] = [],
+  extra: readonly Segment[] = [],
 ): SheetStroke[] {
   const segments: Segment[] = grid.boundarySegments([maze.start, maze.end, ...decoys])
   for (let e = 0; e < maze.topo.edgeCount; e++) {
     if (maze.open[e] === 0) segments.push(grid.wallSegment(e))
   }
+  segments.push(...extra)
 
   // Which walls meet at each lattice vertex, so a wall can ask whether another
   // one carries on from its end.
@@ -200,43 +217,106 @@ export function isoStrokes(
     return false
   }
 
-  const panels: Panel[] = segments.map(([u, v], i) => {
-    const { a, b } = ends[i] as { a: Point; b: Point }
-    return { a, b, capA: !runsOn(i, u), capB: !runsOn(i, v), z: depth(a, b) }
-  })
-  panels.sort((p, q) => p.z - q.z)
-
   const h = view.wallHeight
-  const out: SheetStroke[] = []
-  for (const panel of panels) {
-    const base = [view.to(panel.a), view.to(panel.b)]
-    const top = [view.to(panel.a, h), view.to(panel.b, h)]
-    const corners = [base[0] as Point, base[1] as Point, top[1] as Point, top[0] as Point]
+  const pieces: Piece[] = segments.map(([u, v], i) => {
+    const { a, b } = ends[i] as { a: Point; b: Point }
+    const panel: Panel = { a, b, capA: !runsOn(i, u), capB: !runsOn(i, v), z: depth(a, b) }
+    return { z: panel.z, strokes: panelStrokes(panel, view, 0, h, stroke) }
+  })
 
-    const line = (from: Point, to: Point): PathCommand[] => [
-      { op: 'M', x: from.x, y: from.y },
-      { op: 'L', x: to.x, y: to.y },
-    ]
-    const edges: PathCommand[] = [
-      ...line(base[0] as Point, base[1] as Point),
-      ...line(top[0] as Point, top[1] as Point),
-      ...(panel.capA ? line(base[0] as Point, top[0] as Point) : []),
-      ...(panel.capB ? line(base[1] as Point, top[1] as Point) : []),
-    ]
-
-    // Fill first, outline second, one wall at a time: batching every fill and
-    // then every outline would put the whole back of the maze on top of its
-    // front.
-    out.push({
-      commands: [
-        ...corners.map((c, i) => ({ op: i === 0 ? ('M' as const) : ('L' as const), x: c.x, y: c.y })),
-        { op: 'Z' as const },
-      ],
-      width: 0,
-      fill: true,
-      light: true,
-    })
-    out.push({ commands: edges, width: stroke })
+  for (const x of crossings) {
+    if (!carved(x, maze)) continue
+    pieces.push(deck(grid, x, view, stroke))
   }
-  return out
+
+  pieces.sort((p, q) => p.z - q.z)
+  return pieces.flatMap((p) => p.strokes)
+}
+
+/** One upright card, filled white and then outlined. */
+function panelStrokes(
+  panel: Panel,
+  view: IsoView,
+  base: number,
+  height: number,
+  stroke: number,
+): SheetStroke[] {
+  const low = [view.to(panel.a, base), view.to(panel.b, base)]
+  const top = [view.to(panel.a, base + height), view.to(panel.b, base + height)]
+  const corners = [low[0] as Point, low[1] as Point, top[1] as Point, top[0] as Point]
+
+  const edges: PathCommand[] = [
+    ...line(low[0] as Point, low[1] as Point),
+    ...line(top[0] as Point, top[1] as Point),
+    ...(panel.capA ? line(low[0] as Point, top[0] as Point) : []),
+    ...(panel.capB ? line(low[1] as Point, top[1] as Point) : []),
+  ]
+
+  // Fill first, outline second, one wall at a time: batching every fill and
+  // then every outline would put the whole back of the maze on top of its
+  // front.
+  return [
+    { commands: closed(corners), width: 0, fill: true, light: true },
+    { commands: edges, width: stroke },
+  ]
+}
+
+/**
+ * A bridge: a deck resting on the wall tops, with a low wall along each side.
+ *
+ * Drawn just after the two walls it rests on, so it covers them and the
+ * corridor running underneath passes behind it — which in a projection needs no
+ * convention to read, unlike the flat styles, where a bridge has to be a gap.
+ */
+function deck(
+  grid: PlanarGrid,
+  crossing: Crossing,
+  view: IsoView,
+  stroke: number,
+): Piece {
+  const mid = crossing.at
+  const half = grid.pitch / 2
+  const rim = (grid.pitch * BRIDGE_WIDTH) / 2
+  const along = crossing.acrossX ? { x: half, y: 0 } : { x: 0, y: half }
+  const wide = crossing.acrossX ? { x: 0, y: rim } : { x: rim, y: 0 }
+  const at = (a: number, b: number): Point => ({
+    x: mid.x + a * along.x + b * wide.x,
+    y: mid.y + a * along.y + b * wide.y,
+  })
+
+  const floor = view.wallHeight
+  const corners = [at(-1, -1), at(1, -1), at(1, 1), at(-1, 1)]
+  const strokes: SheetStroke[] = [
+    { commands: closed(corners.map((c) => view.to(c, floor))), width: 0, fill: true, light: true },
+    { commands: closed(corners.map((c) => view.to(c, floor))), width: stroke },
+  ]
+  // The parapets, and only the far one keeps its ends: the near one is read
+  // against the deck it stands on rather than against anything behind it.
+  for (const side of [-1, 1]) {
+    strokes.push(
+      ...panelStrokes(
+        { a: at(-1, side), b: at(1, side), capA: true, capB: true, z: 0 },
+        view,
+        floor,
+        view.wallHeight * 0.6,
+        stroke,
+      ),
+    )
+  }
+  // Just after the two walls it rests on, which are a half-pitch either side.
+  return { z: 2 * (mid.x + mid.y) + grid.pitch + 1e-6, strokes }
+}
+
+function line(from: Point, to: Point): PathCommand[] {
+  return [
+    { op: 'M', x: from.x, y: from.y },
+    { op: 'L', x: to.x, y: to.y },
+  ]
+}
+
+function closed(points: readonly Point[]): PathCommand[] {
+  return [
+    ...points.map((c, i) => ({ op: i === 0 ? ('M' as const) : ('L' as const), x: c.x, y: c.y })),
+    { op: 'Z' as const },
+  ]
 }
