@@ -21,6 +21,16 @@ export interface Style {
    * per-stroke rather than per-vertex.
    */
   readonly sketch?: number
+  /**
+   * Stand the walls up and look at them from a corner.
+   *
+   * The only style that changes how much maze fits on the page, because the
+   * projection spends most of a sheet on empty paper and makes corridors
+   * narrower besides. Everything else here is a pure function of the same
+   * geometry; this one needs a smaller grid to keep the promise cell size
+   * makes. See `render/iso.ts` and docs/DESIGN.md §5.
+   */
+  readonly iso?: boolean
 }
 
 /**
@@ -57,6 +67,11 @@ export const STYLES: readonly Style[] = [
   // still what the corridor guarantee has to hold.
   { id: 'sketch', label: 'Sketch', rounding: 0.3, jitter: 0.06, sketch: 0.1 },
   { id: 'cave', label: 'Cave', rounding: 0.5, jitter: 0, cave: true },
+  // No rounding and no jitter: both are displacements in the ground plane, and
+  // a wall panel is drawn from its two ends rather than chained with its
+  // neighbours, so neither would reach it. A wobbly isometric maze is a
+  // separate piece of work, not a value in this row.
+  { id: 'iso', label: 'Isometric', rounding: 0, jitter: 0, iso: true },
 ]
 
 /**

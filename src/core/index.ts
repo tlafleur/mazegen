@@ -43,6 +43,7 @@ export { reachableCount, solve } from './analyze'
 export {
   deadEndRuns,
   distanceFromPath,
+  fillDeadEnds,
   measure,
   openDegree,
   type DeadEndRun,
@@ -55,6 +56,7 @@ export {
   recipeFor,
   type CarvableGrid,
   type CarverName,
+  type Extras,
   type Level,
   type LevelRecipe,
 } from './difficulty'

@@ -200,6 +200,88 @@ too little route to shorten — so levels 3 to 5 compress. Level 5 is 4.1× leve
 only 1.75× on crayon. That is a limit of how much maze fits on a page at that corridor width, not
 a defect in the recipes.
 
+### Past the ceiling: what to vary once level 5 runs out
+
+Level 5 is a plain backtracker with no braiding and no cap. There is nothing left in the recipe
+shape to turn, so a sixth rung of the same kind would have been a relabelling. Three axes were
+measured instead, all of them independent of the five levels and composable with any of them.
+
+**Where the maze begins and ends.** `farthestBoundaryPair` picks the two outline cells furthest
+apart on the *uncarved* grid — a property of the shape, so the entrance stays put however the maze
+is recarved. `farthestOpenPair` runs the same double BFS through the passages the carver actually
+left, which is the longest route the finished maze contains. Measured on Letter at a 4 mm pitch:
+
+| Grid | Cells | Route, shape ends | Route, longest | Score, shape ends | Score, longest |
+|---|---|---|---|---|---|
+| Squares | 2961 | 988 | 1219 | 0.683 | 0.761 |
+| Hexagons | 3384 | 890 | 1274 | 0.621 | 0.726 |
+| Rings | 1435 | 310 | 519 | 0.710 | 0.789 |
+
+It is worth 46% on the route and 18% on expected work, and it is the only axis found that takes
+the score above what the recipes reach on their own. The cost is the property it gives up: the
+entrance moves when the maze is recarved. That is why it is an option rather than the default —
+stability is worth more at the easy end and length is worth more at the hard end.
+
+**Opening every dead end.** Braiding at ratio 1 leaves a maze made entirely of loops. The
+composite score says this is much *easier*, and the score is right about what it measures: opening
+every dead end also opens every shortcut, and on a 2961-cell grid the shortest route falls from
+809 cells to 153.
+
+But the score is not the only thing worth measuring. `fillDeadEnds` rubs out every dead end
+repeatedly — the shortcut a solver learns first, since a corridor ending in a wall cannot be on
+the route. On a perfect maze it terminates with *exactly* the solution, which is a clean check on
+both the metric and the carver:
+
+| Braid | Cells surviving the fill | Shortest route | Score |
+|---|---|---|---|
+| 0 | 809 (27%) | 809 | 0.649 |
+| 0.3 | 2324 (78%) | 287 | 0.344 |
+| 0.8 | 2825 (95%) | 165 | 0.341 |
+| 0.95 | 2932 (99%) | 157 | 0.368 |
+| 1 | 2961 (100%) | 153 | 0.355 |
+
+So a fully braided maze is harder for a child who wanders — nothing can be ruled out, and nothing
+tells them they are wrong — and easier for one who is systematic. That is a real thing to want and
+not a rung on a ladder, so it ships as an option labelled for what it does and stays off the
+preset cards. `fillDeadEnds` is deliberately not folded into `measure`: the two disagree about
+braiding on purpose, and averaging them would hide the finding rather than report it.
+
+**False gaps in the outline.** A printed maze gives away one thing no maze on a screen does: both
+openings are visible from across the room, so the exit can be found before the route is. Extra
+gaps take that away. They are cut in the drawing, not carved — the graph is untouched, the score
+is unchanged, and the way out is still whichever gap the finish marker is drawn at. Dead ends are
+preferred as the cells to open, so following one to the border really is a wasted trip, and every
+gap is held at least 14 mm from the real openings and from the others: nearer, and the mouse drawn
+outside the entrance would sit beside a hole it did not come through.
+
+Nothing here is captured by `score`, which is the point of writing it down. It is the same
+situation as sidewinder, whose unbroken top row hands a solver a plan that no structural measure
+notices, and which is pinned to level 1 by name for that reason.
+
+### What the preset ladder measures
+
+Expected work is `score × cellCount`: the score is per cell, so a maze twice the size at the same
+score is twice the walk. Over 20 seeds each, on Letter:
+
+| Preset | Level | Cells | Pitch | Route | Work |
+|---|---|---|---|---|---|
+| Tiny | 1 | 315 | 12 mm | 41 | 143 |
+| Little | 2 | 588 | 9 mm | 68 | 242 |
+| Big kid | 3 | 1302 | 6 mm | 170 | 593 |
+| Tricky | 4 | 1302 | 6 mm | 275 | 741 |
+| Fiendish | 5 | 2961 | 4 mm | 864 | 1943 |
+| Brutal | 5 | 2961 | 4 mm | 1265 | 2289 |
+| Bonkers | 5 | 3384 | 4 mm | 1339 | 2499 |
+
+The last two are level 5 as well, and differ only in where the maze runs and what a cell is shaped
+like. Brutal is worth 18% over Fiendish; Bonkers is worth 9% over Brutal, from 14% more cells at a
+slightly lower score each. The second step is the smaller one on the measure, and it leans partly
+on something no measure here captures — a hexagon grid has no four-way junctions, so there are no
+free choices and no straight corridors to sight down.
+
+A pen size below 4 mm was the obvious way to make the numbers bigger and was rejected: it raises
+absolute work without raising the score, and a 3 mm corridor is cramped for a child with a pencil.
+
 ## 5. Line styles
 
 All styles are pure functions of the wall geometry plus a style seed. Changing style never changes
@@ -279,6 +361,55 @@ which knew only about rounding and jitter — so the moment Sketch and Cave exis
 a plain Classic maze. The icons are built by the real renderer now. An icon that can disagree with
 what it is picking is worse than no icon at all.
 
+
+### Isometric: the one style that changes the maze
+
+Every other style here is a pure function of the same wall geometry, which is the claim §3 makes and
+the reason a style can be picked last. Isometric breaks it, and the break is worth stating rather
+than hiding, because it is a property of projection rather than a shortcut taken here.
+
+**Walls are cards standing on the floor.** A wall has no thickness, so there is no top face: the
+whole panel is one quadrilateral — along the base, up, back along the top, down — filled white and
+then outlined. That fill is the entire occlusion model. Sorting the panels by the sum of their
+endpoints' grid coordinates and drawing back to front means a nearer wall simply paints over a
+further one, and it is exact here because every wall lies on a cell boundary and no two of them
+cross.
+
+**Wall height decides whether the maze is solvable at all.** A wall of height `h` hides `h / sin30`
+millimetres of floor behind it. At 0.3 × pitch that is 0.6 of a cell, so a corridor running away
+from the viewer is still more than half visible past the wall in front of it; at 0.5 it would be a
+whole cell and such corridors would disappear. These are curbs, not hedges. Found by rendering, not
+by choosing.
+
+**The upright edge between one wall and the next in line is left out.** It is not a real edge — two
+collinear panels are coplanar — and drawing it turned every long wall into a row of bricks whose
+hatching buried the maze under its own texture. Corners and ends keep theirs, because there the two
+panels genuinely turn away from each other.
+
+**A projection fits about a quarter as much maze on a sheet, and no amount of tuning changes it.**
+Two things take the space. Corridors come out `cos30` of their width, so keeping the flat cell count
+would quietly break the promise cell size makes. And the projected bounding box of a `w` by `h` grid
+is always `(w + h)·cos30` by `(w + h)·sin30` — a fixed 1.73:1 — *whatever* the split between `w` and
+`h`, because rotating a rectangle 45° and squashing it does not care which side was which. A square
+grid is the best case: its rhombus fills half that box, where a lopsided one fills less. So a
+portrait sheet leaves a band of paper empty above and below, a landscape one wastes far less, and
+the panel says so instead of pretending otherwise.
+
+The way to fill a portrait page would be to carve a region that *projects* to a rectangle — a long
+thin parallelogram in grid space, which would need a mask chosen from the paper. That is a real
+option and deliberately not taken here: it would make the shape library depend on the style, which
+is the coupling §3 exists to prevent.
+
+**What it costs elsewhere:** `MazeSettings` carries an `iso` flag so `baseGridFor` can size the grid
+for the projection, and `sheetMapping` puts the flat translation and the projection behind one call
+so the preview, the print and a finger on the screen cannot drift apart. Solving on screen works
+unchanged — the round trip is tested by reading the drawn answer back out of the rendered sheet and
+walking a pointer along it.
+
+**Height is a parameter from the start, not an afterthought.** `IsoView.to` takes a `z`, and nothing
+in the app raises anything off the floor yet. A weave maze's bridge is exactly a wall whose base is
+not at zero, and the projection is the first place that has to be expressible — settling it now was
+the sequencing note in §13, and it cost two parameters rather than a rewrite.
 
 ### Rings: the third grid, and the two things it does not fit
 
@@ -502,9 +633,9 @@ Principles, each with a concrete mechanism:
 2. **Pictures, not words, and no numbers.** Preset cards show a real maze generated at those
    settings; difficulty is filled dots; shapes and line styles are drawn, not named. A pre-reader
    can operate the whole primary flow. The words on the cards are for whoever is helping.
-3. **One tap sets difficulty and cell size together.** They are separate axes in the engine, and
-   deliberately so, but a child should not have to reason about two things to get a maze. The
-   Advanced area exposes them apart.
+3. **One tap sets everything about how hard the maze is.** Difficulty, cell size, cell shape and
+   the extra options are separate axes in the engine, and deliberately so, but a child should not
+   have to reason about four things to get a maze. The Advanced area exposes them apart.
 4. **Stepped chips, not sliders**, at a 60 px minimum — above the 44 pt HIG floor.
 5. **Nothing is destructive.** A filmstrip keeps the last six mazes, and tapping one restores it
    whole. It never reorders: a maze a child is looking for should stay where they last saw it.
@@ -513,19 +644,24 @@ Principles, each with a concrete mechanism:
    spreads the cards across the width.
 8. **The preview ignores pointers**, so a hand resting on it does nothing.
 9. **Standalone display**, so there is no address bar to tap out of.
-10. **An Advanced area** — paper, orientation, difficulty and cell size, background, markers,
-    answer, ruler, metrics — behind a plainly labelled disclosure. Not a lock; an adult should
-    never have to hunt for it.
+10. **An Advanced area** — paper, orientation, difficulty, cell size, the three harder options,
+    texture, background, markers, answer, ruler, metrics — behind a plainly labelled disclosure.
+    Not a lock; an adult should never have to hunt for it.
 
 ### Saying which controls overlap
 
-The five preset cards set two things at once, difficulty and cell size, and both of those are also
-controls of their own. Left unlabelled that reads as three competing scales — "Fiendish" appearing
-in two places, meaning two different things in each.
+The preset cards set several things at once — difficulty, cell size, cell shape, and which of the
+harder options are on — and every one of those is also a control of its own. Left unlabelled that
+reads as competing scales, with "Fiendish" appearing in two places and meaning something different
+in each.
 
 The cards are headed **Preset**, with a line saying what they are a shortcut for; inside Advanced
-the two controls sit together under **What a preset sets**, apart from the page setup above them
-and the print options below. Filled moved out of Show, where it never belonged, into **Background:
+those controls sit together under **How the maze is built**, apart from the page setup above them
+and the print options below. A card stays lit only while every setting it named still agrees:
+one left lit beside a setting that had been changed by hand would be describing a different sheet
+from the one about to print. The dots on a card count its position in the list rather than its
+difficulty level, because the top three cards are all level 5 and dots that counted the level would
+show them as identical. Filled moved out of Show, where it never belonged, into **Background:
 Plain or Filled**. Nothing changed about what any control does. What changed is that the overlap is
 stated rather than left to be inferred, which is the cheapest fix available and was worth more here
 than any rearrangement.
@@ -740,3 +876,112 @@ Platform, primary user, and paper size are settled (§1). Still open, none of th
 1. **How much play versus how much printing?** If on-screen solving turns out to be the main activity, the app is a toy that happens to print, and that would argue for pulling it into phase 1. Worth revisiting after the first build is in front of a child.
 2. **Braid ratio for young children.** The mechanism in §4 is sound; the specific ratio that keeps a five-year-old moving without letting them circle indefinitely should be tuned against real children rather than chosen from theory.
 3. **How many shapes before variety stops mattering?** Mask authoring is the one part of this that scales linearly with effort rather than being a one-time cost. Six good shapes may beat twenty mediocre ones.
+
+## 13. What to build next
+
+From a brainstorm after the polar grid shipped, prompted by the older child asking for harder
+mazes. The order below is agreed; the rest is recorded so it does not have to be rediscovered.
+
+Order: **harder presets → isometric style → weave mazes → the Escher group.**
+
+The sequencing note — settle the weave data model before building the isometric extrusion, since a
+bridge needs a height and the extrusion is where a height first has to exist — is discharged.
+`IsoView.to(point, z)` takes one, and `isoStrokes` draws a panel from a base and a height rather
+than from the floor, so a bridge is a wall whose base is not zero. Two parameters, not a rewrite.
+
+### 1. Harder presets — built
+
+Level 5 is the top of the model in §4 — a plain backtracker, no braiding, no dead-end cap — so
+harder had to come from new axes. Four were built; the measurements are in §4, and two of them
+did not land where this section originally guessed.
+
+**Cell shape in the preset.** A preset now sets the cell shape as well as difficulty and cell
+size. Two new cards: **Brutal** (squares, longest route, decoys) and **Bonkers** (hexagons, the
+same). Worth 18% and a further 9% of expected work over Fiendish.
+
+**Running the maze between the ends of its longest corridor.** Not in the original list, and the
+best of the four: 46% on the route and 18% on the work, and the only axis measured that takes the
+score above what the recipes reach on their own. It gives up the property that the entrance is
+fixed by the outline, which is why it is an option rather than the default.
+
+**Decoy exits**, as a toggle. Cut in the drawing rather than carved, so the score is unchanged;
+what changes is that the border stops giving the exit away at a glance.
+
+**Wilson's carver**, exposed as *Texture: Even* rather than as a difficulty step, as planned.
+
+**Braiding near 1.0 did not turn out to be harder, and is not on a card.** This section claimed it
+would be. Measured, it halves the composite score — opening every dead end opens every shortcut,
+and the shortest route through a 2961-cell grid falls from 809 cells to 153. What it genuinely
+does is take away dead-end filling, the shortcut a solver learns first: on a perfect maze that
+rubs the page down to exactly the solution, and at braid 1 it removes nothing at all. So it ships
+as *Loops*, an option under Advanced described for what it does, and the preset cards — whose dots
+claim an order — do not use it.
+
+**A pen size below 4 mm stays rejected**, as above.
+
+### 2. Isometric style — built
+
+Renderer-only in the sense that mattered: no carver, no difficulty recipe, no shape mask and no
+output format changed. The details, the wall height that decides solvability, and the page geometry
+that makes a portrait sheet a poor fit are in §5.
+
+Two things the plan did not anticipate. A projection fits about a quarter as much maze on a page,
+for two separate reasons that compound — corridors come out `cos30` of their width, and the
+projected bounding box is a fixed 1.73:1 whatever the grid — so `MazeSettings` carries an `iso` flag
+to size the grid, which is the only place a style reaches back into how the maze is built. And the
+naive extrusion drew the upright edge between every pair of collinear walls, which turned long walls
+into rows of bricks; leaving those out was the difference between a drawing and a texture.
+
+Solving on screen came along for free once the flat translation and the projection went behind one
+`sheetMapping` call, and is tested by reading the drawn answer back out of the rendered sheet and
+walking a pointer along it.
+
+Still open, and deliberately: filling a portrait page would need a region chosen to *project* to a
+rectangle, which means a mask that depends on the paper and the style. See §5.
+
+### 3. Weave mazes
+
+Passages that cross over and under, the lower one drawn broken. The largest genuine step in
+difficulty available, and the one that makes adults slow down. It is a topology change — an "over"
+cell carries two passages through it that do not connect — so a new `BaseGrid` or a wrapper over
+`SquareGrid`, plus a renderer that breaks the under-passage. No carver changes. It reads better in
+isometric than flat, and better still in first person, which is why it sits between those two items
+rather than before both.
+
+### 4. The Escher group
+
+Four separate things at rising cost, and the cheap ones are worth having on their own:
+
+- **Impossible frame.** An ordinary maze inside a Penrose triangle or an impossible staircase. A
+  mask plus a decorative border, and the maze itself is unchanged.
+- **Relativity.** Multi-floor grid plus the isometric renderer, with stairs joining floors at angles
+  that read as impossible. This is the combination that actually looks Escher-ish, and it doubles as
+  the hardest maze in the app.
+- **Hyperbolic disc.** Cells shrinking toward the rim, Poincaré style. Structurally the closest
+  thing to `PolarGrid` — rings that subdivide — with hyperbolic radii and a {p,q} tiling. Prints
+  well in black and white.
+- **Tessellation.** Stamp a repeating motif head-to-tail along each corridor instead of a plain
+  tunnel, reusing the Cave renderer's habit of drawing passages rather than walls. The alternative
+  reading — Escher's interlocking creatures as the cell outlines — is an art job, not a code job.
+
+### Accepted, not scheduled
+
+- **Multi-floor and poster mazes as toggles**, alongside weave and decoy exits, rather than as
+  presets. Poster mazes are a viewport per page; `buildPdf` already takes an array of sheets.
+- **A first-person play mode** — a third renderer on the same data, after SVG and PDF.
+  `wallSegment` plus `vertexPos` is the whole geometry step and works on every grid, and `trail.ts`
+  is already the movement-legality layer. Cell-by-cell hops rather than free roam, so a child cannot
+  wedge themselves in a wall and the six hex directions need no special case. The honest cost is
+  controls, camera feel and motion comfort, none of which the measure-it-and-look method catches.
+  Cheap probe first: a press-and-hold peek from the trail head in the existing 2D play mode.
+- **Race sheet** — the same maze twice on one landscape page, two children, one timer. Wanted with
+  a car and racetrack treatment.
+- **Answer on the back**, as page 2 of the same PDF, so an adult can check without solving it.
+- **Maze of the day**, seeded from the date, with a streak.
+- **Draw your own shape** on screen as a mask. `word.ts` already proves bitmap-to-mask works.
+
+### Shelved
+
+Seasonal themes, Halloween included. Not rejected on merit — a theme is a set of masks, a marker
+pair and a default style, and all three are data rather than code, so the cost does not grow by
+waiting.

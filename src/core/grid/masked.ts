@@ -1,6 +1,18 @@
-import type { CellId, EdgeId, RowStructured, Topology } from '../types'
+import type { CellId, EdgeId, Maze, RowStructured, Topology } from '../types'
+import type { Rng } from '../rng'
+import { openDegree } from '../metrics'
 import type { Mask } from './mask'
 import type { BaseGrid, PlanarGrid, Point, Segment } from './planar'
+
+/**
+ * Closest a decoy gap may come to a real opening or another decoy, in mm.
+ *
+ * Sized against the marker box in `render/marker.ts`: any nearer and the
+ * mouse drawn outside the entrance would sit beside a hole it did not come
+ * through. Widened to three cells on a coarse grid, where 14 mm is barely
+ * one cell.
+ */
+const MIN_DECOY_GAP = 14
 
 /**
  * A grid restricted to the cells inside a shape.
@@ -230,6 +242,84 @@ export class MaskedGrid implements Topology, PlanarGrid {
    * is carved. On a rectangle it picks opposite corners. See docs/DESIGN.md §6.
    */
   farthestBoundaryPair(): readonly [CellId, CellId] {
+    return this.farthestPair(null)
+  }
+
+  /**
+   * The two outline cells furthest apart *along the corridors*, once carved.
+   *
+   * The same search over the passages the carver left open, so the answer is
+   * the longest route the maze actually contains between two points a marker
+   * can be drawn outside. Measured, it lengthens the route by a quarter to two
+   * thirds and lifts the difficulty score above anything the recipes in §4
+   * reach on their own — the one axis found that goes past a plain backtracker.
+   *
+   * The cost is that the entrance moves when the maze is recarved, which is
+   * exactly what `farthestBoundaryPair` was written to avoid. That is why it is
+   * an option rather than the default: stability is worth more at the easy end,
+   * and length is worth more at the hard end.
+   */
+  farthestOpenPair(maze: Maze): readonly [CellId, CellId] {
+    return this.farthestPair(maze.open)
+  }
+
+  /**
+   * Boundary cells to put a false gap in the outline at.
+   *
+   * A solver reading a printed maze has one shortcut nobody intends: the two
+   * gaps in the border are visible from across the room, so the exit can be
+   * found before the route is. Extra gaps take that away. They are not extra
+   * ways out — the goal is whichever one the cheese is drawn at — so a decoy
+   * costs nothing in solvability and does not change the difficulty score. It
+   * changes what the page gives away at a glance, which no measure here
+   * captures.
+   *
+   * Dead ends are preferred as the cells to open, so that following one to the
+   * border really is a wasted trip rather than a shortcut past a wall. Where
+   * there are not enough — a maze carved with `loops` on has none at all —
+   * any boundary cell will do.
+   *
+   * Every choice is held apart from the real entrance and exit and from the
+   * other decoys, both so the markers have room to be drawn and because two
+   * gaps a cell apart read as one wide gap.
+   */
+  decoyExits(maze: Maze, rng: Rng, count: number): CellId[] {
+    if (count <= 0) return []
+    const apart = Math.max(MIN_DECOY_GAP, 3 * this.pitch)
+    const chosen: CellId[] = []
+    const taken = [maze.start, maze.end].map((c) => this.cellCenter(c))
+
+    const farEnough = (cell: CellId): boolean => {
+      const p = this.cellCenter(cell)
+      return taken.every((q) => Math.hypot(p.x - q.x, p.y - q.y) >= apart)
+    }
+
+    const candidates = this.boundaryCells().filter((c) => c !== maze.start && c !== maze.end)
+    rng.shuffle(candidates)
+    // Dead ends first, then anything, so a short perimeter still gets its
+    // decoys rather than silently getting none.
+    const byPreference = [
+      candidates.filter((c) => openDegree(maze, c) === 1),
+      candidates,
+    ]
+
+    for (const pool of byPreference) {
+      for (const cell of pool) {
+        if (chosen.length >= count) return chosen
+        if (chosen.includes(cell) || !farEnough(cell)) continue
+        chosen.push(cell)
+        taken.push(this.cellCenter(cell))
+      }
+    }
+    return chosen
+  }
+
+  /**
+   * Double BFS over the boundary, through every adjacency or only open ones.
+   *
+   * `open` null means the bare grid: every neighbour is reachable.
+   */
+  private farthestPair(open: Uint8Array | null): readonly [CellId, CellId] {
     const onBoundary = new Uint8Array(this.cellCount)
     for (const c of this.boundaryCells()) onBoundary[c] = 1
 
@@ -247,6 +337,7 @@ export class MaskedGrid implements Topology, PlanarGrid {
           best = cur
         }
         for (const e of this.edgesOf(cur)) {
+          if (open !== null && open[e] === 0) continue
           const nb = this.other(e, cur)
           if ((dist[nb] as number) !== -1) continue
           dist[nb] = d + 1
