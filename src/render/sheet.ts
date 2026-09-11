@@ -1,11 +1,12 @@
 import type { CellId, Maze } from '../core/types'
-import type { PlanarGrid, Point, Segment } from '../core/grid/planar'
+import type { Crossing, PlanarGrid, Point, Segment } from '../core/grid/planar'
 import { chainSegments } from './chain'
 import { polylineCommands, type PathCommand } from './path'
 import { DEFAULT_MARGIN, type Paper } from './page'
 import { CAVE_GAP, CLASSIC, MAX_JITTER, jitterOffset, sketchOffset, type Style } from './style'
 import { markerSet, placeMarker } from './marker'
 import { isoStrokes, isoView } from './iso'
+import { BRIDGE_WIDTH } from '../core/grid/weave'
 import type { Sheet, SheetLabel, SheetStroke } from './pdf'
 
 /** Twice the area a closed ring encloses, signed. Sign is not used, only size. */
@@ -132,6 +133,7 @@ export function buildSheet(
   const jitter = Math.min(style.jitter, MAX_JITTER) * grid.pitch
   const styleSeed = opts.styleSeed ?? 0
   const decoys = opts.decoys ?? []
+  const crossings = grid.crossings?.() ?? []
 
   // Null for every flat style, which is all of them but one.
   const iso = style.iso === true ? isoView(paper, grid, margin) : null
@@ -191,9 +193,11 @@ export function buildSheet(
   }
 
   if (iso !== null) {
-    strokes.push(...isoStrokes(grid, maze, iso, opts.stroke, decoys))
+    strokes.push(
+      ...isoStrokes(grid, maze, iso, opts.stroke, decoys, crossings, weaveWalls(crossings, maze)),
+    )
   } else if (style.cave === true) {
-    strokes.push(...caveStrokes(grid, maze, radius, opts.stroke, ox, oy, decoys))
+    strokes.push(...caveStrokes(grid, maze, radius, opts.stroke, ox, oy, decoys, crossings))
   } else {
     // The outline, minus the openings: the two the maze is entered and left
     // through, and any decoy gaps that lead nowhere.
@@ -201,6 +205,7 @@ export function buildSheet(
     for (let e = 0; e < maze.topo.edgeCount; e++) {
       if (maze.open[e] === 0) segments.push(grid.wallSegment(e))
     }
+    segments.push(...weaveWalls(crossings, maze))
 
     // Sketch draws each line twice. Its wander is charged against the same
     // budget as the shared jitter, so no combination of the two can narrow a
@@ -239,6 +244,18 @@ export function buildSheet(
         })
       }
       n += points.length
+    }
+  }
+
+  if (crossings.length > 0 && iso === null && style.cave !== true) {
+    // After every wall and before anything else, because a bridge is drawn by
+    // covering up the two walls it passes between. Only for the styles that
+    // draw walls: Cave has none to cover, and draws its bridges by putting the
+    // tunnel that passes over back on top; isometric simply raises them.
+    const pad = opts.stroke + jitter + (style.sketch ?? 0) * grid.pitch
+    for (const x of crossings) {
+      if (!carved(x, maze)) continue
+      strokes.push(...bridgeStrokes(grid, x, onPage, opts.stroke, pad))
     }
   }
 
@@ -378,6 +395,107 @@ function overshoot(points: readonly Point[], by: number): Point[] {
  * down before any white one, or a later tunnel would paint over an earlier
  * one's inside.
  */
+/** Whether both halves of a crossing were carved, so there is a bridge to draw. */
+export function carved(crossing: Crossing, maze: Maze): boolean {
+  return (
+    crossing.edge >= 0 &&
+    crossing.under >= 0 &&
+    maze.open[crossing.edge] === 1 &&
+    maze.open[crossing.under] === 1
+  )
+}
+
+/**
+ * The extra walls a crossing needs, beyond what the closed edges supply.
+ *
+ * A corridor passing under a bridge has two side walls. One of them is what the
+ * grid returns from `wallSegment` for the bridge, so it is already drawn
+ * whenever the bridge was left uncarved; this adds the other, and both when the
+ * bridge is carved and `wallSegment` was never asked. Split that way so these
+ * go through the same chaining and the same jitter as every other wall — drawn
+ * separately they would sit straight while the rest of the maze wobbled.
+ */
+function weaveWalls(crossings: readonly Crossing[], maze: Maze): Segment[] {
+  const out: Segment[] = []
+  for (const x of crossings) {
+    const over = x.edge >= 0 && maze.open[x.edge] === 1
+    const under = x.under >= 0 && maze.open[x.under] === 1
+    if (over && under) {
+      // A carved crossing: the bridge is drawn separately, and both side walls
+      // belong to the corridor beneath it.
+      out.push(x.sides[0], x.sides[1])
+      continue
+    }
+    // Otherwise it is a plain corridor, or a solid block when neither was
+    // carved. `wallSegment` supplied the first of each pair for an edge that
+    // exists and was left closed; everything else is this function's to add.
+    if (!over) {
+      out.push(x.sides[1])
+      if (x.edge < 0) out.push(x.sides[0])
+    }
+    if (!under) {
+      out.push(x.blocks[1])
+      if (x.under < 0) out.push(x.blocks[0])
+    }
+  }
+  return out
+}
+
+/**
+ * A bridge: cut the corridor beneath it open, then draw its own two walls.
+ *
+ * The cut is a white fill across the two side walls rather than any attempt to
+ * draw them in pieces — a wall is a pair of lattice vertices, and half of one
+ * has no vertex to name. It is the same trick the Cave style uses to hollow a
+ * tunnel and the isometric one uses to hide a panel, which is three uses and
+ * so probably the right primitive.
+ *
+ * The bridge comes out narrower than the corridor it joins. That is not
+ * decoration: the pieces of side wall left standing above and below the cut are
+ * exactly what closes the step from one width to the other, so the drawing has
+ * no loose ends anywhere.
+ */
+function bridgeStrokes(
+  grid: PlanarGrid,
+  crossing: Crossing,
+  onPage: (p: Point) => Point,
+  stroke: number,
+  pad: number,
+): SheetStroke[] {
+  const mid = crossing.at
+  const half = grid.pitch / 2
+  const rim = (grid.pitch * BRIDGE_WIDTH) / 2
+  // Along the bridge it spans the cell; across it, only the bridge's own width.
+  const along = crossing.acrossX ? { x: half, y: 0 } : { x: 0, y: half }
+  const wide = crossing.acrossX ? { x: 0, y: rim } : { x: rim, y: 0 }
+  const over = crossing.acrossX ? { x: pad, y: 0 } : { x: 0, y: pad }
+
+  const corner = (a: number, b: number): Point =>
+    onPage({
+      x: mid.x + a * (along.x + over.x) + b * wide.x,
+      y: mid.y + a * (along.y + over.y) + b * wide.y,
+    })
+
+  const box = [corner(-1, -1), corner(1, -1), corner(1, 1), corner(-1, 1)]
+  const out: SheetStroke[] = [
+    { commands: polylineCommands([...box, box[0] as Point], 0), width: 0, fill: true, light: true },
+  ]
+  // The bridge's own two walls, stopping at the cell so the corridors it joins
+  // keep their full width right up to it.
+  for (const side of [-1, 1]) {
+    const from = onPage({
+      x: mid.x - along.x + side * wide.x,
+      y: mid.y - along.y + side * wide.y,
+    })
+    const to = onPage({
+      x: mid.x + along.x + side * wide.x,
+      y: mid.y + along.y + side * wide.y,
+    })
+    out.push({ commands: polylineCommands([from, to], 0), width: stroke })
+  }
+  return out
+}
+
 function caveStrokes(
   grid: PlanarGrid,
   maze: Maze,
@@ -386,6 +504,7 @@ function caveStrokes(
   ox: number,
   oy: number,
   decoys: readonly CellId[],
+  crossings: readonly Crossing[],
 ): SheetStroke[] {
   const at = (cell: CellId): Point => {
     const p = grid.cellCenter(cell)
@@ -412,8 +531,22 @@ function caveStrokes(
   // parallel pair of tunnels is closer than a whole cell, and sizing from the
   // pitch would very nearly merge them.
   const tunnel = grid.passageGap * (1 - CAVE_GAP)
+
+  // A bridge, drawn inside out: the tunnel that passes over is simply drawn
+  // again, last, so its black edge cuts the white out of the one beneath it.
+  // Nothing here decides which passes over — the grid already did — and drawing
+  // them in one pass would merge the two into a crossroads that is not there.
+  const bridges: PathCommand[][] = []
+  for (const x of crossings) {
+    if (!carved(x, maze)) continue
+    const [a, b] = maze.topo.endpoints(x.edge)
+    bridges.push(polylineCommands([at(a), at(b)], 0))
+  }
+
   return [
     ...paths.map((commands) => ({ commands, width: tunnel })),
     ...paths.map((commands) => ({ commands, width: tunnel - 2 * stroke, light: true })),
+    ...bridges.map((commands) => ({ commands, width: tunnel })),
+    ...bridges.map((commands) => ({ commands, width: tunnel - 2 * stroke, light: true })),
   ]
 }

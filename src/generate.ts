@@ -2,6 +2,7 @@ import { SquareGrid } from './core/grid/square'
 import { HexGrid, hexGridSize } from './core/grid/hex'
 import { PolarGrid, polarGridSize } from './core/grid/polar'
 import { MaskedGrid } from './core/grid/masked'
+import { WeaveGrid, WEAVE_DENSITY } from './core/grid/weave'
 import { shapeLibrary, type Shape } from './core/grid/mask'
 import { carveAtLevel, type CarverName, type Extras, type Level } from './core/difficulty'
 import { measure, type MazeMetrics } from './core/metrics'
@@ -53,6 +54,13 @@ export interface MazeSettings {
    * quietly break the promise cell size makes. See `render/iso.ts`.
    */
   readonly iso?: boolean
+  /**
+   * Let some corridors cross over others.
+   *
+   * Squares only: a bridge is a corridor that skips the cell between two others
+   * on the same line, and a hexagon has no such line. See `core/grid/weave.ts`.
+   */
+  readonly weave?: boolean
 }
 
 /**
@@ -80,7 +88,14 @@ export interface GeneratedMaze {
  * apart, not a whole one — but the answer is in the same units, so nothing
  * downstream has to know which it got.
  */
-export function baseGridFor(paper: Paper, pen: Pen, cells?: CellKind, iso = false): BaseGrid {
+export function baseGridFor(
+  paper: Paper,
+  pen: Pen,
+  cells?: CellKind,
+  iso = false,
+  /** Seed for placing bridges, or undefined for a grid without any. */
+  weaveSeed?: string,
+): BaseGrid {
   const live = iso
     ? isoLiveArea(paper, pen.pitch)
     : { width: paper.width - 2 * DEFAULT_MARGIN, height: paper.height - 2 * DEFAULT_MARGIN }
@@ -96,6 +111,9 @@ export function baseGridFor(paper: Paper, pen: Pen, cells?: CellKind, iso = fals
     { ...paper, width: live.width + 2 * DEFAULT_MARGIN, height: live.height + 2 * DEFAULT_MARGIN },
     pen.pitch,
   )
+  if (weaveSeed !== undefined) {
+    return new WeaveGrid(cols, rows, pen.pitch, makeRng(weaveSeed), WEAVE_DENSITY)
+  }
   return new SquareGrid(cols, rows, pen.pitch)
 }
 
@@ -121,7 +139,12 @@ export function shapesFor(paper: Paper, pen: Pen, cells?: CellKind, iso = false)
 export function generateMaze(settings: MazeSettings): GeneratedMaze {
   const { paper, pen, level, shape, seed, cells } = settings
 
-  const grid = new MaskedGrid(baseGridFor(paper, pen, cells, settings.iso === true), shape.mask)
+  // A derived stream, so the bridges stay put when any other option changes.
+  const weaveSeed = settings.weave === true ? `${seed}:weave` : undefined
+  const grid = new MaskedGrid(
+    baseGridFor(paper, pen, cells, settings.iso === true, weaveSeed),
+    shape.mask,
+  )
 
   const extras: Extras = { loops: settings.loops === true, carver: settings.carver }
   const [start, end] = grid.farthestBoundaryPair()

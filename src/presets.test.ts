@@ -14,6 +14,7 @@ const choiceOf = (p: (typeof PRESETS)[number]): PresetChoice => ({
   farEnds: p.farEnds,
   loops: p.loops,
   decoys: p.decoys,
+  weave: p.weave,
 })
 
 describe('the preset list', () => {
@@ -74,6 +75,10 @@ describe('the preset list', () => {
     expect(bonkers as number).toBeGreaterThan(brutal as number)
   })
 
+  it('uses bridges only where the cells are square', () => {
+    for (const p of PRESETS) if (p.weave) expect(p.cells.id).toBe('square')
+  })
+
   it('never puts loops on a card, because loops is not harder', () => {
     // Measured in core/difficulty.test.ts: opening every dead end lowers the
     // score. It stays an option under Advanced rather than a rung on the list.
@@ -97,6 +102,7 @@ describe('presetFor', () => {
       { farEnds: true },
       { loops: true },
       { decoys: true },
+      { weave: true },
     ]
     for (const edit of edits) expect(presetFor({ ...base, ...edit })).toBeNull()
   })

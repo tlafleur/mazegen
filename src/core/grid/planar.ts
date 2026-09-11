@@ -81,6 +81,35 @@ export interface BaseGrid extends Topology {
   wallSegment(edge: EdgeId): Segment
   /** Rows and columns, for the carvers that need them; null when there are none. */
   rowStructured?(): (Topology & RowStructured) | null
+  /** Places where one corridor crosses over another. Absent on a flat grid. */
+  crossings?(): readonly Crossing[]
+}
+
+/**
+ * One corridor crossing over another.
+ *
+ * Everything the drawing needs and nothing about how the grid arranged it. The
+ * cell is the one the lower corridor runs through; the edge is the bridge, an
+ * ordinary adjacency between the two cells it lands on, which happen to sit two
+ * apart with no wall between them.
+ *
+ * `sides` is the pair of walls that close the bridge, which are also the side
+ * walls of the corridor running beneath it. `under` is that corridor, and
+ * `blocks` the pair that closes it. A grid returns the first of each pair from
+ * `wallSegment`; the renderer draws the rest, and which of them depends on
+ * which of the two edges were carved. See `weaveWalls` in render/sheet.ts.
+ */
+export interface Crossing {
+  /** Where it is, in grid millimetres. No cell sits there to ask instead. */
+  readonly at: Point
+  /** The bridge, or -1 where a mask cut one of the cells it joined. */
+  readonly edge: EdgeId
+  /** The corridor beneath, or -1 for the same reason. */
+  readonly under: EdgeId
+  /** True when the bridge runs left to right, so the corridor under it is vertical. */
+  readonly acrossX: boolean
+  readonly sides: readonly [Segment, Segment]
+  readonly blocks: readonly [Segment, Segment]
 }
 
 /**
@@ -133,4 +162,6 @@ export interface PlanarGrid {
    * is how it stays clear of the walls without any collision test.
    */
   openingNormal(cell: CellId): Point | null
+  /** Places where one corridor crosses over another. Absent on a flat grid. */
+  crossings?(): readonly Crossing[]
 }

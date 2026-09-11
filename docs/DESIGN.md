@@ -551,6 +551,82 @@ Phase 2 adds objects (rocket, dinosaur, fish, cupcake) and **letter mazes** — 
 initial and get a maze in that shape. Both are masks like any other; letters need only glyph
 rasterization, and the polygon mask already in place covers the objects.
 
+## 6b. Weave: corridors that cross
+
+A bridge breaks the one assumption a solver never questions — that two corridors meeting on the
+page meet in the maze. It is an ordinary adjacency in the graph, so every carver, the braider, the
+solver, the metrics and both output formats work on it untouched. Only its geometry is unusual, and
+only its geometry took any thought.
+
+### A crossing holds no cell
+
+The position where two corridors cross holds **two edges and no cell**: one joining the cells above
+and below it, one joining the cells left and right, and they do not meet. Four adjacencies are
+traded for two that skip over.
+
+The obvious model is the other one — give the position a cell carrying the lower corridor, and add
+the bridge beside it — and it was built first. It does not work, for a reason worth recording
+because nothing about it is visible until the maze is drawn. **A carver knows nothing about
+crossings**, so it will leave that cell a dead end with a bridge over it, and a bridge over a dead
+end can only be drawn as a sealed sliver of white that means nothing and reads as a mistake.
+Forcing the corridor through costs a loop apiece, and measured on a fine-pen sheet that was 237
+loops:
+
+| | Cells | Route | Score | Work |
+|---|---|---|---|---|
+| Plain | 2961 | 1189 | 0.753 | 2230 |
+| Bridges, cell kept, corridor forced | 2961 | 146 | 0.171 | 507 |
+| Bridges, no cell at the crossing | 2797 | 1263 | 0.772 | 2159 |
+
+The feature meant to be the hardest thing in the app was making the easiest mazes in it. With no
+cell at the crossing the corridor beneath is one edge rather than two, so it is carved or it is not
+and there is no third state to draw.
+
+The price is that when neither edge is carved the position is a solid block. That sets the density:
+a few blocks read as deliberate, a few hundred read as damage. At 6% of the interior a fine-pen
+sheet gets about 164 crossings — 56 bridges, 36 blocks, 72 plain corridors — and loses 5% of its
+cells to them.
+
+### What it costs, and what it does not buy
+
+Expected work barely moves: 2230 without, 2159 with. **Weave is not a structural difficulty
+increase**, and saying otherwise would be as wrong as the `loops` claim §4 had to withdraw. What it
+changes is what the page tells a solver, and none of the measures here can see that — the same
+situation as decoy exits, and as sidewinder's give-away top row.
+
+### Drawing it
+
+A bridge is drawn **narrower than the corridor it joins**. That is not decoration. A full-width
+bridge would put its two walls exactly on the faces the corridor beneath needs left open, and no
+drawing can show both; inset, the pieces of side wall left standing above and below are exactly
+what closes the step from one width to the other, so nothing is left loose.
+
+The break in the corridor beneath is a **white fill** rather than an attempt to draw its side walls
+in pieces — a wall is a pair of lattice vertices, and half of one has no vertex to name. That is the
+third use of the same primitive, after hollowing a Cave tunnel and hiding an isometric panel, which
+is probably enough to call it the right one.
+
+Four combinations, all of them drawn and none of them ambiguous: both edges carved is a crossing;
+one carved is a plain corridor at full width; neither is a solid block. `wallSegment` supplies the
+first wall of each pair and the renderer adds whichever of the rest the case calls for — the one
+asymmetry in the whole thing, and it is there so these walls go through the same chaining and the
+same jitter as every other wall rather than sitting straight while the maze wobbles.
+
+Each style needed its own answer, and getting one wrong is not a matter of looks: a style that
+ignored crossings would draw a crossroads where the maze has none, and claim a way through that is
+not there.
+
+- **Wall styles** cut the corridor beneath and draw the bridge's own two walls.
+- **Cave** has no walls to cut, so the tunnel that passes over is simply drawn again, last. Its
+  black edge is what cuts the white out of the one beneath.
+- **Isometric** needs no convention at all: the bridge is a deck resting on the tops of the walls
+  either side, with a parapet along each edge. This is what the height parameter in `IsoView.to`
+  was put there for, two sections before anything used it.
+
+Solving on screen came free. `cellAtPoint` over a crossing returns -1, which is the truth about it,
+and `follow` already skipped samples that land on nothing — so a finger crosses a bridge by landing
+on the cell beyond, one step away through it.
+
 ## 7. Printing — the main risk
 
 Baseline: render the SVG at exactly 8.5 × 11 in with internal margins, and use
@@ -939,14 +1015,21 @@ walking a pointer along it.
 Still open, and deliberately: filling a portrait page would need a region chosen to *project* to a
 rectangle, which means a mask that depends on the paper and the style. See §5.
 
-### 3. Weave mazes
+### 3. Weave mazes — built
 
-Passages that cross over and under, the lower one drawn broken. The largest genuine step in
-difficulty available, and the one that makes adults slow down. It is a topology change — an "over"
-cell carries two passages through it that do not connect — so a new `BaseGrid` or a wrapper over
-`SquareGrid`, plus a renderer that breaks the under-passage. No carver changes. It reads better in
-isometric than flat, and better still in first person, which is why it sits between those two items
-rather than before both.
+Corridors that cross over one another, as a toggle rather than a preset, and carried by the
+**Brutal** card. The model, the model that was tried first and measured wrong, the four cases the
+drawing has to tell apart, and what each style had to do about it are all in §6b.
+
+Two findings worth repeating here. The obvious model — a cell at the crossing carrying the lower
+corridor, with the bridge beside it — collapses the maze: forcing the corridor through costs a loop
+per bridge, and on a fine-pen sheet that was 237 loops, taking the score from 0.75 to 0.17. And
+weave does **not** raise expected work (2230 without, 2159 with), so the claim this section made
+for it was wrong in the same way the `loops` claim was: what it changes is what the page tells a
+solver, which none of the measures here can see.
+
+The sequencing note paid off exactly as intended. `IsoView.to` already took a height, so an
+isometric bridge is a deck resting on the wall tops rather than a rewrite of the extrusion.
 
 ### 4. The Escher group
 

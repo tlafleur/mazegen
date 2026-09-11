@@ -24,9 +24,16 @@ export interface Preset {
   readonly farEnds: boolean
   readonly loops: boolean
   readonly decoys: boolean
+  readonly weave: boolean
 }
 
-const plain = { cells: SQUARES, farEnds: false, loops: false, decoys: false } as const
+const plain = {
+  cells: SQUARES,
+  farEnds: false,
+  loops: false,
+  decoys: false,
+  weave: false,
+} as const
 
 /**
  * Ordered easiest to hardest, which is also the order the cards are drawn in
@@ -68,6 +75,7 @@ export const PRESETS: readonly Preset[] = [
     farEnds: true,
     loops: false,
     decoys: true,
+    weave: true,
   },
   {
     id: 'bonkers',
@@ -78,6 +86,7 @@ export const PRESETS: readonly Preset[] = [
     farEnds: true,
     loops: false,
     decoys: true,
+    weave: false,
   },
 ]
 
@@ -89,6 +98,7 @@ export interface PresetChoice {
   readonly farEnds: boolean
   readonly loops: boolean
   readonly decoys: boolean
+  readonly weave: boolean
 }
 
 /**
@@ -107,7 +117,8 @@ export function presetFor(choice: PresetChoice): Preset | null {
         p.cells.id === choice.cellsId &&
         p.farEnds === choice.farEnds &&
         p.loops === choice.loops &&
-        p.decoys === choice.decoys,
+        p.decoys === choice.decoys &&
+        p.weave === choice.weave,
     ) ?? null
   )
 }
